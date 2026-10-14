@@ -1,1 +1,813 @@
-Hello Internet
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Content-Security-Policy (defence in depth).
+  'unsafe-inline' is required for script-src/style-src because this file is a single
+  self-contained document with an inline <script> and inline <style> block. Everything
+  else is denied: no network, no plugins, no framing, no form posts. If a remote
+  <script src> or <img> were ever pasted into this file, the browser would refuse it.
+  Note: frame-ancestors is ignored in a meta tag - send that one as an HTTP header
+  (X-Content-Type-Options: nosniff too) if you host this on a web server.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Interplanetary Telescope Resolution Calculator</title>
+<style>
+  :root{
+    --bg:#0a0c0f;
+    --bg-2:#0e1116;
+    --panel:#12161c;
+    --panel-2:#161b22;
+    --line:#232a33;
+    --line-2:#2e3742;
+    --ink:#e8ecf1;
+    --ink-2:#9aa5b1;
+    --ink-3:#66707c;
+    --accent:#5fd0f5;
+    --accent-2:#f2a65a;
+    --good:#7ee081;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(900px 500px at 78% -8%, rgba(95,208,245,.07), transparent 60%),
+      radial-gradient(700px 400px at 5% 0%, rgba(242,166,90,.05), transparent 60%);
+    background-repeat:no-repeat;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:34px 22px 70px}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:26px}
+  h1{
+    font-size:clamp(22px,3.2vw,31px);
+    margin:0 0 8px;
+    letter-spacing:-.02em;
+    font-weight:620;
+  }
+  h1 .thin{color:var(--ink-3);font-weight:400}
+  .sub{color:var(--ink-2);max-width:70ch;margin:0}
+  .refs{margin-top:12px;display:flex;flex-wrap:wrap;gap:8px 16px;font-size:12.5px}
+  .refs a{color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--line-2);padding-bottom:1px}
+  .refs a:hover{color:var(--accent);border-color:var(--accent)}
+
+  .grid{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:18px 18px 16px;
+  }
+  .panel h2{
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink-3);margin:0 0 14px;font-weight:600;
+  }
+  .panel + .panel{margin-top:16px}
+  .sticky{position:sticky;top:18px}
+  @media (max-width:900px){.sticky{position:static}}
+
+  .field{margin-bottom:15px}
+  .field:last-child{margin-bottom:0}
+  label.lab{
+    display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+    font-size:12.5px;color:var(--ink-2);margin-bottom:6px;
+  }
+  .lab .hint{color:var(--ink-3);font-family:var(--mono);font-size:11px}
+  .row{display:flex;gap:8px}
+  .row > input[type=number]{flex:1 1 auto;min-width:0}
+  select,input[type=number]{
+    background:var(--bg-2);
+    border:1px solid var(--line-2);
+    color:var(--ink);
+    border-radius:8px;
+    padding:8px 9px;
+    font-size:14px;
+    font-family:var(--mono);
+    outline:none;
+  }
+  select{cursor:pointer;font-size:12.5px;flex:0 0 auto;padding-right:6px}
+  input[type=number]{-moz-appearance:textfield}
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  select:focus,input[type=number]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(95,208,245,.12)}
+  select option{background:var(--panel-2)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .chip{
+    background:var(--panel-2);
+    border:1px solid var(--line-2);
+    color:var(--ink-2);
+    border-radius:999px;
+    padding:3px 9px;
+    font-size:11.5px;
+    font-family:var(--mono);
+    cursor:pointer;
+    transition:border-color .12s,color .12s,background .12s;
+  }
+  .chip:hover{border-color:var(--accent);color:var(--accent);background:rgba(95,208,245,.07)}
+  .chip.on{border-color:var(--accent);color:var(--accent);background:rgba(95,208,245,.12)}
+
+  .toggle{
+    display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;
+    padding:10px 12px;border:1px solid var(--line-2);border-radius:9px;background:var(--bg-2);
+    margin-bottom:14px;
+  }
+  .toggle:hover{border-color:var(--line-2)}
+  .toggle input{position:absolute;opacity:0;pointer-events:none}
+  .sw{
+    width:34px;height:19px;border-radius:999px;background:#232a33;position:relative;flex:0 0 auto;
+    transition:background .16s;
+  }
+  .sw::after{
+    content:"";position:absolute;top:2.5px;left:2.5px;width:14px;height:14px;border-radius:50%;
+    background:#8b95a2;transition:transform .16s,background .16s;
+  }
+  .toggle input:checked + .sw{background:rgba(95,208,245,.28)}
+  .toggle input:checked + .sw::after{transform:translateX(15px);background:var(--accent)}
+  .toggle .tl{font-size:13.5px;color:var(--ink)}
+  .toggle input:focus-visible + .sw{box-shadow:0 0 0 3px rgba(95,208,245,.2)}
+
+  .big{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:10px;
+    padding:16px 18px;
+    margin-bottom:14px;
+  }
+  .big.array{border-left-color:var(--accent-2)}
+  .big .k{
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:7px;
+    display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;
+  }
+  .big .k .tag{font-family:var(--mono);letter-spacing:0;text-transform:none;color:var(--ink-3)}
+  .val{
+    font-family:var(--mono);
+    font-size:clamp(28px,5vw,42px);
+    line-height:1.05;
+    letter-spacing:-.02em;
+    color:var(--ink);
+    word-break:break-word;
+  }
+  .val .u{font-size:.44em;color:var(--ink-2);margin-left:.28em;letter-spacing:0}
+  .subv{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);margin-top:8px;word-break:break-word}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:4px}
+  .card{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;
+  }
+  .card .ck{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+  .card .cv{font-family:var(--mono);font-size:17px;color:var(--ink);word-break:break-word}
+  .card .cv .u{font-size:.66em;color:var(--ink-2);margin-left:.2em}
+
+  .note{
+    font-size:12.5px;color:var(--ink-2);margin-top:12px;
+    border-top:1px solid var(--line);padding-top:11px;
+  }
+  .note b{color:var(--ink);font-weight:600}
+
+  #chartwrap{margin-top:16px}
+  svg#chart{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-top:9px;font-family:var(--mono)}
+  .legend i{display:inline-block;width:18px;height:2px;vertical-align:middle;margin-right:6px}
+
+  .eq{
+    font-family:var(--mono);font-size:13px;color:var(--ink);
+    background:var(--bg-2);border:1px solid var(--line);border-radius:8px;
+    padding:11px 13px;margin:9px 0;overflow-x:auto;
+  }
+  .eq em{color:var(--accent);font-style:normal}
+  .eq .c{color:var(--accent-2)}
+  .prose{color:var(--ink-2);font-size:13.5px;max-width:82ch}
+  .prose a{color:var(--accent)}
+  ul{padding-left:18px;margin:8px 0}
+  li{margin:4px 0;color:var(--ink-2);font-size:13.5px}
+  li b{color:var(--ink);font-weight:600}
+  footer{margin-top:30px;padding-top:18px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12px}
+  @media print{body{background:#fff;color:#000}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>How small can you see? <span class="thin">— diffraction &amp; interferometry at interplanetary distances</span></h1>
+  <p class="sub">
+    A diffraction-limited telescope of diameter <b>D</b> viewing at wavelength <b>λ</b> from a distance
+    <b>L</b> can separate features no smaller than <span style="font-family:var(--mono)">θ·L</span>, where
+    <span style="font-family:var(--mono)">θ = k·λ/D</span>. An array of <b>N</b> telescopes spaced <b>s</b> apart
+    acts — for resolution only — like a single mirror of diameter equal to the longest baseline,
+    <span style="font-family:var(--mono)">B = (N−1)·s</span>. Everything below is reported in <b>metres</b>, not radians.
+  </p>
+  <div class="refs">
+    <a href="https://en.wikipedia.org/wiki/Diffraction-limited_system" target="_blank" rel="noopener">Diffraction-limited system (Wikipedia)</a>
+    <a href="https://en.wikipedia.org/wiki/Astronomical_interferometer" target="_blank" rel="noopener">Astronomical interferometer (Wikipedia)</a>
+    <a href="https://en.wikipedia.org/wiki/Rayleigh_criterion" target="_blank" rel="noopener">Rayleigh criterion</a>
+    <a href="https://en.wikipedia.org/wiki/Angular_resolution" target="_blank" rel="noopener">Angular resolution</a>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- ============ CONTROLS ============ -->
+  <div class="sticky">
+
+    <div class="panel">
+      <h2>Target</h2>
+
+      <div class="field">
+        <label class="lab" for="dist"><span>Distance</span><span class="hint" id="dist-m">—</span></label>
+        <div class="row">
+          <input type="number" id="dist" value="5.2" step="any" min="0">
+          <select id="dist-u">
+            <option value="au" selected>AU</option>
+            <option value="lm">light-min</option>
+            <option value="lh">light-hr</option>
+          </select>
+        </div>
+        <div class="chips" id="dist-chips"></div>
+      </div>
+
+      <div class="field">
+        <label class="lab" for="wl"><span>Wavelength λ</span><span class="hint" id="wl-m">—</span></label>
+        <div class="row">
+          <input type="number" id="wl" value="550" step="any" min="0">
+          <select id="wl-u">
+            <option value="nm" selected>nm</option>
+            <option value="um">µm</option>
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m">m</option>
+          </select>
+        </div>
+        <div class="chips" id="wl-chips"></div>
+      </div>
+
+      <div class="field">
+        <label class="lab" for="criterion"><span>Criterion</span></label>
+        <select id="criterion" style="width:100%">
+          <option value="1.22" selected>Rayleigh — k = 1.22</option>
+          <option value="1">Simple — k = 1.00</option>
+        </select>
+        <div class="chips" style="margin-top:8px">
+          <span class="chip" style="cursor:default">1.22: circular aperture, sinθ = 1.22 λ/D</span>
+          <span class="chip" style="cursor:default">1.00: λ/D, uniform/simple aperture</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Single telescope</h2>
+      <div class="field">
+        <label class="lab" for="dia"><span>Aperture diameter D</span><span class="hint" id="dia-m">—</span></label>
+        <div class="row">
+          <input type="number" id="dia" value="8" step="any" min="0">
+          <select id="dia-u">
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m" selected>m</option>
+            <option value="km">km</option>
+          </select>
+        </div>
+        <div class="chips" id="tel-chips"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Interferometer</h2>
+
+      <label class="toggle">
+        <input type="checkbox" id="ifon" checked>
+        <span class="sw"></span>
+        <span class="tl">Enable telescope array</span>
+      </label>
+
+      <div id="if-block">
+        <div class="field">
+          <label class="lab" for="ntel"><span>Number of telescopes N</span><span class="hint" id="ntel-m">—</span></label>
+          <input type="number" id="ntel" value="4" step="1" min="2" max="200">
+        </div>
+
+        <div class="field">
+          <label class="lab" for="sep"><span>Spacing s (equidistant)</span><span class="hint" id="sep-m">—</span></label>
+          <div class="row">
+            <input type="number" id="sep" value="50" step="any" min="0">
+            <select id="sep-u">
+              <option value="m" selected>m</option>
+              <option value="km">km</option>
+            </select>
+          </div>
+          <div class="chips" id="if-chips"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ RESULTS ============ -->
+  <div>
+
+    <div class="big">
+      <div class="k"><span>Single telescope — smallest resolvable object</span><span class="tag" id="single-tag">—</span></div>
+      <div class="val" id="single-val">—</div>
+      <div class="subv" id="single-sub">—</div>
+    </div>
+
+    <div class="big array" id="arr-big" style="display:none">
+      <div class="k"><span>Interferometer — smallest resolvable object</span><span class="tag" id="arr-tag">—</span></div>
+      <div class="val" id="arr-val">—</div>
+      <div class="subv" id="arr-sub">—</div>
+    </div>
+
+    <div class="panel">
+      <h2>Working</h2>
+      <div class="cards" id="cards"></div>
+      <div class="note" id="note"></div>
+    </div>
+
+    <div class="panel" id="chartwrap">
+      <h2>Resolution vs distance</h2>
+      <svg id="chart" viewBox="0 0 820 430" role="img" aria-label="Log-log plot of smallest resolvable object size versus distance"></svg>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>single telescope</span>
+        <span id="leg-array" style="display:none"><i style="background:var(--accent-2)"></i>interferometer</span>
+        <span><i style="background:var(--ink-3)"></i><select id="refsel" style="padding:2px 6px;font-size:11px"></select></span>
+      </div>
+      <div class="note">
+        Log–log: resolvable size grows linearly with distance, so doubling the range doubles the detail needed.
+        Reference objects are drawn as horizontal bars to show where a given object becomes resolvable.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>The physics</h2>
+
+      <div class="eq">θ = <em>k</em> · λ / D &nbsp;&nbsp;<span class="c">[radians]</span></div>
+      <p class="prose">
+        The diffraction-limited <b>angular resolution</b> of a perfect circular aperture is proportional to
+        wavelength and inversely proportional to the entrance-aperture diameter. Under the Rayleigh criterion
+        (<span class="prose" style="font-family:var(--mono)">k = 1.22</span>) two point sources are just resolved when the
+        maximum of one Airy pattern falls on the first minimum of the other, which occurs at
+        <span style="font-family:var(--mono)">sin θ = 1.22 λ / D</span>. The corresponding image detail is the
+        <a href="https://en.wikipedia.org/wiki/Airy_disk" target="_blank" rel="noopener">Airy disk</a>, whose full width to
+        the first null is <span style="font-family:var(--mono)">2.44 λ/D</span>.
+        The Abbe form <span style="font-family:var(--mono)">d = λ / (2·n·sinθ) = λ / (2·NA)</span> is the
+        <i>microscope</i> convention and is why "diffraction limit" factors of 0.5–1.22 all appear in the literature.
+      </p>
+
+      <div class="eq">s_min = θ · L = <em>k</em> · λ · L / D &nbsp;&nbsp;<span class="c">[metres]</span></div>
+      <p class="prose">
+        To convert an angle into a length at distance <span style="font-family:var(--mono)">L</span>, use the small-angle
+        relation <span style="font-family:var(--mono)">s = L·tanθ ≈ L·θ</span>. This is what gives the object size in metres
+        on this page. Note the inverse-square-feeling intuition break: because θ is fixed by the optics, the
+        resolvable size at Jupiter is simply the Earth–Jupiter distance times the same angle, i.e. it scales linearly
+        with distance, not quadratically.
+      </p>
+
+      <div class="eq">B = (N − 1) · s &nbsp;&nbsp;→&nbsp;&nbsp; θ_if = <em>k</em> · λ / B, &nbsp; s_min,if = θ_if · L</div>
+      <p class="prose">
+        For <b>N</b> telescopes on an equidistant line with spacing <span style="font-family:var(--mono)">s</span>, the
+        longest (maximum) projected baseline is the end-to-end span
+        <span style="font-family:var(--mono)">B = (N−1)s</span>. Fringe spacing of a two-element interferometer is
+        <span style="font-family:var(--mono)">λ/B</span>, so the array resolves the same angles as one ideal mirror of
+        diameter <span style="font-family:var(--mono)">B</span> — the classic statement that an interferometer has the
+        resolution of a telescope the size of the separation between its apertures. Adding telescopes therefore buys
+        resolution only in proportion to how far apart the outermost elements are placed; a compact array of many small
+        dishes is limited by <span style="font-family:var(--mono)">B</span>, not by <span style="font-family:var(--mono)">N</span>.
+      </p>
+
+      <div class="eq">θ_max ≈ λ / s &nbsp;&nbsp;<span class="c">[largest source angular size measurable]</span></div>
+      <p class="prose">
+        The complement of the resolution limit: the sparsely-sampled pupil function of a discrete array has strong
+        grating lobes, so the array cannot cleanly measure an extended source much larger than about
+        <span style="font-family:var(--mono)">λ/s</span>. This is the "maximum angular size of a detectable emission
+        source is limited by the minimum gap between detectors" caveat in the interferometer literature.
+      </p>
+
+      <ul>
+        <li><b>Thinned-array curse:</b> collecting area scales with the real aperture area, not with
+          <span style="font-family:var(--mono)">B²</span>. The array resolves beautifully but shows almost nothing too faint.</li>
+        <li><b>Coherence &amp; baselines:</b> at visible wavelengths the optical paths from each telescope to the beam
+          combiner must be matched to a fraction of a wavelength across the whole span, which is why real optical
+          interferometers such as VLTI span only ~130 m equivalent while radio VLBI spans thousands of kilometres.</li>
+        <li><b>Seeing:</b> a ground telescope is usually seeing-limited (~1″), far above its diffraction limit; only
+          space telescopes or adaptive optics approach the numbers computed here.</li>
+        <li><b>Orientation:</b> a baseline perpendicular to the source's position angle resolves finest. The
+          <span style="font-family:var(--mono)">(N−1)s</span> figure is the best case (array laid broadside).</li>
+      </ul>
+
+      <div class="eq" style="border-color:var(--line-2)">
+        L: 1 AU = 1.495978707×10<sup>11</sup> m &nbsp;·&nbsp; 1 light-minute = c×60 s = 1.79875×10<sup>10</sup> m
+        &nbsp;·&nbsp; 1 light-hour = 1.07925×10<sup>12</sup> m
+      </div>
+    </div>
+
+    <footer>
+      Ideal, diffraction-limited systems only — no atmospheric seeing, no aberrations, no detector noise.
+      Built from the diffraction-limited-system and astronomical-interferometer articles; see the links at the top.
+      Runs entirely offline; no dependencies.
+    </footer>
+
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------------------------------------------------------- constants */
+var C      = 299792458;          // m/s
+var AU     = 1.495978707e11;     // m
+var LM     = C * 60;             // light-minute, m
+var LH     = C * 3600;           // light-hour, m
+
+var DIST = { au:{m:AU,label:"AU"}, lm:{m:LM,label:"light-min"}, lh:{m:LH,label:"light-hr"} };
+var WL   = { nm:1e-9, um:1e-6, mm:1e-3, cm:1e-2, m:1 };
+var DIA  = { mm:1e-3, cm:1e-2, m:1, km:1e3 };
+var SEP  = { m:1, km:1e3 };
+
+/* ------------------------------------------------------------- formatting */
+function sig(x, n){
+  if(!isFinite(x) || x === 0) return "0";
+  var neg = x < 0; x = Math.abs(x); n = n || 4;
+  var e = Math.floor(Math.log10(x));
+  var s;
+  if(e >= -6 && e < 21 && (n - 1 - e) >= 0){
+    s = x.toFixed(n - 1 - e);
+    if(s.indexOf(".") >= 0) s = s.replace(/\.?0+$/, "");
+  } else {
+    s = x.toExponential(Math.max(0, n - 1))
+         .replace(/(\.\d*?)0+e/, "$1e")
+         .replace(/\.e/, "e");
+  }
+  return (neg ? "-" : "") + s;
+}
+function num4(v){ return (isFinite(v) && v > 0) ? sig(v, 4) : "—"; }
+
+var DECADES = [[12,"Tm"],[9,"Gm"],[6,"Mm"],[3,"km"],[0,"m"],[-3,"mm"],[-6,"nm"],[-9,"pm"]];
+function decadeLabel(e){
+  for(var i=0;i<DECADES.length;i++)
+    if(e >= DECADES[i][0]) return sig(Math.pow(10, e - DECADES[i][0]), 4) + " " + DECADES[i][1];
+  return sig(Math.pow(10, e + 9), 4) + " nm";
+}
+function fmtLen(x){
+  if(!isFinite(x)) return "—";
+  var a = Math.abs(x);
+  if(a === 0) return "0";
+  var p = [
+    [1e12, "Tm"], [1e9, "Gm"], [1e6, "Mm"], [1e3, "km"], [1, "m"],
+    [1e-3, "mm"], [1e-6, "µm"], [1e-9, "nm"], [1e-12, "pm"], [1e-15, "fm"]
+  ];
+  for(var i=0;i<p.length;i++){
+    if(a >= p[i][0]) return sig(x/(p[i][0])) + " " + p[i][1];
+  }
+  return sig(x/(1e-18)) + " am";
+}
+function fmtLenParts(x){
+  var s = fmtLen(x).split(" ");
+  return { n:s[0], u:s.length>1?s[1]:"" };
+}
+function fmtAngle(rad){
+  if(!isFinite(rad)) return "—";
+  var as  = rad * 206264.806;      // arcseconds
+  var mas = as * 1e3;
+  var uas = mas * 1e3;
+  var out;
+  if(rad >= 1){        out = [sig(rad,4)+" rad"];       if(as  >= 1) out.push(sig(as ,4)+"″"); }
+  else if(as  >= 1){   out = [sig(as ,4)+"″"];           if(mas >= 1) out.push(sig(mas,3)+" mas"); }
+  else if(mas >= 1){   out = [sig(mas,4)+" mas"];        if(uas >= 1) out.push(sig(uas,3)+" µas"); }
+  else                out = [sig(uas,4)+" µas"];
+  return out.join("  ·  ");
+}
+function fmtTime(s){
+  if(!isFinite(s)) return "—";
+  var d = s/86400;
+  if(d >= 1)    return sig(d,3) + " days";
+  if(s >= 3600) return sig(s/3600,3) + " hours";
+  if(s >= 60)   return sig(s/60,3) + " minutes";
+  if(s >= 1)    return sig(s,3) + " seconds";
+  if(s >= 1e-3) return sig(s*1e3,3) + " ms";
+  if(s >= 1e-6) return sig(s*1e6,3) + " µs";
+  return sig(s*1e9,3) + " ns";
+}
+
+/* ------------------------------------------------------------------- state */
+var $ = function(id){ return document.getElementById(id); };
+
+function num(id, fallback){
+  var v = parseFloat($(id).value);
+  return isFinite(v) && v >= 0 ? v : fallback;
+}
+function read(){
+  var d = num("dist", 1) * DIST[$("dist-u").value].m;
+  var lam = num("wl", 550) * WL[$("wl-u").value];
+  var D   = num("dia", 8) * DIA[$("dia-u").value];
+  var k   = parseFloat($("criterion").value);
+  var on  = $("ifon").checked;
+  var n   = Math.max(2, Math.round(num("ntel", 2)));
+  var s   = num("sep", 1) * SEP[$("sep-u").value];
+  var B   = (n - 1) * s;
+  return { d:d, lam:lam, D:D, k:k, on:on, n:n, s:s, B:B,
+           th1:(D>0 ? k*lam/D : NaN),
+           sz1:(D>0 ? k*lam/D*d : NaN),
+           th2:(B>0 ? k*lam/B : NaN),
+           sz2:(B>0 ? k*lam/B*d : NaN) };
+}
+/* does this configuration define any resolvable instrument at all? */
+function anyInstrument(st){
+  return (st.D > 0) || (st.on && st.B > 0);
+}
+
+/* -------------------------------------------------------------- chip sets */
+var DIST_CHIPS = [
+  { t:"Mercury", v:0.387 }, { t:"Venus", v:0.723 }, { t:"Earth", v:1 },
+  { t:"Mars", v:1.524 }, { t:"Jupiter", v:5.203 }, { t:"Saturn", v:9.537 },
+  { t:"Uranus", v:19.19 }, { t:"Neptune", v:30.07 }, { t:"Pluto", v:39.48 },
+  { t:"Heliopause", v:120 }
+];
+var WL_CHIPS = [
+  { t:"21 cm H I",   v:21,   u:"cm" },
+  { t:"6 cm",        v:6,    u:"cm" },
+  { t:"1.3 cm",      v:1.3,  u:"cm" },
+  { t:"8 mm",        v:8,    u:"mm" },
+  { t:"1.3 mm ALMA", v:1.3,  u:"mm" },
+  { t:"870 µm",      v:870,  u:"um" },
+  { t:"550 nm V",    v:550,  u:"nm" },
+  { t:"500 nm",      v:500,  u:"nm" },
+  { t:"1.6 µm NIR",  v:1.6,  u:"um" },
+  { t:"2.2 µm JWST", v:2.2,  u:"um" },
+  { t:"8 µm MIR",    v:8,    u:"um" }
+];
+var TEL_CHIPS = [
+  { t:"Eye 7 mm",  v:7,    u:"mm" },
+  { t:"Binocular 50 mm", v:50, u:"mm" },
+  { t:"Hobby 200 mm", v:200, u:"mm" },
+  { t:"Hubble 2.4 m",  v:2.4, u:"m"  },
+  { t:"VLT 8.2 m",     v:8.2, u:"m"  },
+  { t:"JWST 6.5 m",    v:6.5, u:"m"  },
+  { t:"ELT 39 m",      v:39,  u:"m"  }
+];
+var IF_CHIPS = [
+  { t:"VLT-style 130 m", n:4,  s:43.3, u:"m"  },
+  { t:"CHARA 800 m",    n:6,  s:160,  u:"m"  },
+  { t:"VLBA (10 Mm)",   n:10, s:1111, u:"km" },
+  { t:"Earth orbit",    n:2,  s:7000, u:"km" }
+];
+var REFS = [
+  { t:"(none)", v:0 },
+  { t:"Fingernail 1 cm", v:0.01 },
+  { t:"Golf ball", v:0.0427 },
+  { t:"Car 4 m", v:4.5 },
+  { t:"Football pitch", v:105 },
+  { t:"Statue of Unity 179 m", v:179 },
+  { t:"Everest 8849 m", v:8849 },
+  { t:"Earth 12 742 km", v:1.2742e7 },
+  { t:"Sun 1.3927e9 m", v:1.3927e9 },
+  { t:"Neptune radius 2.46e7 m", v:2.4622e7 }
+];
+
+function buildChips(host, items, onPick, cls){
+  items.forEach(function(it){
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip" + (cls ? " " + cls : "");
+    b.textContent = it.t;
+    b.addEventListener("click", function(){ onPick(it, b); });
+    host.appendChild(b);
+  });
+}
+buildChips($("dist-chips"), DIST_CHIPS, function(it){
+  $("dist").value = it.v; $("dist-u").value = "au"; render();
+});
+buildChips($("wl-chips"), WL_CHIPS, function(it){
+  $("wl").value = it.v; $("wl-u").value = it.u; render();
+});
+buildChips($("tel-chips"), TEL_CHIPS, function(it){
+  $("dia").value = it.v; $("dia-u").value = it.u; render();
+});
+buildChips($("if-chips"), IF_CHIPS, function(it){
+  $("ntel").value = it.n; $("sep").value = it.s; $("sep-u").value = it.u;
+  $("ifon").checked = true; render();
+});
+(function(){
+  var s = $("refsel");
+  REFS.forEach(function(r){
+    var o = document.createElement("option");
+    o.value = r.v; o.textContent = r.t; s.appendChild(o);
+  });
+  s.addEventListener("change", draw);
+})();
+
+/* ----------------------------------------------------------------- render */
+function card(k, v, u){
+  return '<div class="card"><div class="ck">'+k+'</div><div class="cv">'+v+
+         (u?'<span class="u">'+u+'</span>':'')+'</div></div>';
+}
+
+function render(){
+  var st = read();
+  var dUnit = DIST[$("dist-u").value].label;
+
+  /* echoes */
+  $("dist-m").textContent = fmtLen(st.d) + " · " + fmtTime(st.d/C) + " lt";
+  $("wl-m").textContent   = fmtLen(st.lam);
+  $("dia-m").textContent  = fmtLen(st.D);
+  $("sep-m").textContent  = fmtLen(st.s);
+  $("ntel-m").textContent = st.n + " dishes · B = " + fmtLen(st.B);
+
+  /* single telescope */
+  var p1 = fmtLenParts(st.sz1);
+  $("single-val").innerHTML = p1.n + '<span class="u">' + p1.u + '</span>';
+  $("single-tag").textContent = "D = " + fmtLen(st.D);
+  $("single-sub").textContent =
+    "θ = " + fmtAngle(st.th1) + "   ·   at " + sig(st.d/AU,4) + " " + dUnit +
+    "   ·   k·λ·L/D = " + sig(st.k,3) + " × " + fmtLen(st.lam) +
+    " × " + fmtLen(st.d) + " / " + fmtLen(st.D);
+
+  /* interferometer */
+  if(st.on && st.B > 0){
+    $("arr-big").style.display = "";
+    $("leg-array").style.display = "";
+    var p2 = fmtLenParts(st.sz2);
+    $("arr-val").innerHTML = p2.n + '<span class="u">' + p2.u + '</span>';
+    $("arr-tag").textContent = "B = " + fmtLen(st.B);
+    $("arr-sub").textContent =
+      "θ = " + fmtAngle(st.th2) + "   ·   baseline = (N−1)·s = " + (st.n-1) + " × " +
+      fmtLen(st.s) +
+      (st.D > 0 ? "   ·   " + sig(st.sz1/st.sz2,3) + "× better than the single dish" : "");
+  } else {
+    $("arr-big").style.display = "none";
+    $("leg-array").style.display = "none";
+  }
+
+  /* working cards */
+  var html = "";
+  html += card("Angular resolution", num4(st.th1), "rad");
+  html += card("Airy disk width", num4(st.D>0 ? 2.44*st.lam/st.D : NaN), "rad");
+  html += card("Max baseline B", st.B>0 ? fmtLen(st.B) : "—", "");
+  html += card("Array θ", st.on ? num4(st.th2) : "—", st.on ? "rad" : "");
+  html += card("Max source size", st.on ? num4(st.s>0 ? st.lam/st.s : NaN) : "—",
+               st.on ? "rad (λ/s)" : "");
+  html += card("Collecting area π(D/2)²", st.D>0 ? sig(Math.PI*Math.pow(st.D/2,2),4) : "—", "m²");
+  if(st.on && st.B>0) html += card("Gain vs single", sig(st.sz1/st.sz2,4), "×");
+  $("cards").innerHTML = html;
+
+  /* notes */
+  var notes = [];
+  if(st.D > 0){
+    var maxDist1m = 1 / st.th1;                    // range at which a 1 m object is just resolved
+    notes.push("<b>Equivalent to resolving a 1 m object at up to " +
+      fmtLen(maxDist1m) + " from the telescope</b> (" + fmtTime(maxDist1m/C) + " of light travel).");
+  }
+  if(st.on && st.B > 0){
+    var gainTxt = (st.D > 0)
+      ? " — " + sig(st.sz1/st.sz2,3) + "× the baseline gain"
+      : "";
+    var areaTxt = (st.D > 0)
+      ? ", while collecting only π(D/2)² = " + sig(Math.PI*Math.pow(st.D/2,2),3) + " m² of light."
+      : ".";
+    notes.push("The array resolves a 1 m object out to <b>" + fmtLen(1/st.th2) + "</b> (" +
+      fmtTime((1/st.th2)/C) + " of light travel)" + gainTxt + areaTxt);
+    if(st.s > 0 && st.lam/st.s > 1e-3){
+      notes.push("Its <i>downside</i>: sources larger than θ ≈ " + fmtAngle(st.lam/st.s) +
+        " (≈ " + fmtLen(st.lam/st.s*st.d) + " across at this distance) risk being split up by grating lobes.");
+    }
+  }
+  if(st.D > 0 && st.sz1 > 1.2742e7){
+    notes.push("At this distance the resolution is coarser than <b>Earth itself</b> — you would see the planet as a single unresolved dot.");
+  }
+  /* validity of the small-angle / Rayleigh assumption */
+  if(st.D > 0 && st.k*st.lam/st.D > 0.05){
+    notes.push("⚠ <b>Outside the formula's validity:</b> λ/D = " + sig(st.lam/st.D,3) +
+      " is far too large. The criterion needs sinθ = k·λ/D ≤ 1, and the small-angle step " +
+      "s = L·θ no longer holds — at this aperture/wavelength the instrument cannot resolve " +
+      "two points at all, so treat the figure above as a formal limit only.");
+  }
+  if(!anyInstrument(st)){
+    notes.push("⚠ <b>No valid instrument:</b> enter a telescope diameter (or an array spacing) larger than zero.");
+  }
+  $("note").innerHTML = notes.join("<br><br>");
+
+  draw(st);
+}
+
+/* ------------------------------------------------------------------- chart */
+function draw(st){
+  st = st || read();
+  var W = 820, H = 430;
+  var M = { t:16, r:46, b:46, l:76 };
+  var pw = W - M.l - M.r, ph = H - M.t - M.b;
+
+  var xMin = 0.1, xMax = 1000;                 // AU
+  var lx0 = Math.log10(xMin), lx1 = Math.log10(xMax);
+
+  var N = 160, pts = [];
+  var refV = parseFloat($("refsel").value);
+  for(var i=0;i<=N;i++){
+    var lx = lx0 + (lx1-lx0)*i/N;
+    var au = Math.pow(10,lx);
+    var L  = au * AU;
+    var p  = { lx:lx, au:au };
+    if(st.D > 0) p.y1 = st.k*st.lam/st.D*L;
+    if(st.on && st.B > 0) p.y2 = st.k*st.lam/st.B*L;
+    pts.push(p);
+  }
+
+  var vals = [];
+  pts.forEach(function(p){ if(isFinite(p.y1)) vals.push(p.y1); if(isFinite(p.y2)) vals.push(p.y2); });
+  if(refV > 0) vals.push(refV);
+  if(!vals.length){
+    $("chart").innerHTML =
+      '<rect x="76" y="16" width="726" height="368" fill="#0e1116" stroke="#232a33"/>' +
+      '<text x="439" y="196" text-anchor="middle" fill="#66707c" font-size="13">' +
+      'No resolvable instrument — enter an aperture diameter, or enable an array with a non-zero spacing.</text>';
+    return;
+  }
+
+  var yMin = Math.min.apply(null, vals), yMax = Math.max.apply(null, vals);
+  var lo = Math.log10(yMin), hi = Math.log10(yMax);
+  var pad = Math.max(0.12, (hi - lo) * 0.07);
+  var ly0 = lo - pad, ly1 = hi + pad;
+  if(ly1 - ly0 < 1.2) ly1 = ly0 + 1.2;
+
+  function X(lx){ return M.l + (lx-lx0)/(lx1-lx0)*pw; }
+  function Y(ly){ return M.t + ph - (ly-ly0)/(ly1-ly0)*ph; }
+
+  var s = [];
+  s.push('<rect x="'+M.l+'" y="'+M.t+'" width="'+pw+'" height="'+ph+'" fill="#0e1116" stroke="#232a33"/>');
+
+  /* y grid + labels */
+  for(var e=Math.ceil(ly0); e<=Math.floor(ly1); e++){
+    var y = Y(e);
+    s.push('<line x1="'+M.l+'" y1="'+y.toFixed(1)+'" x2="'+(M.l+pw)+'" y2="'+y.toFixed(1)+
+           '" stroke="#1b212a" stroke-width="1"/>');
+    s.push('<text x="'+(M.l-9)+'" y="'+(y+4).toFixed(1)+'" text-anchor="end" fill="#66707c" '+
+           'font-family="ui-monospace,Menlo,monospace" font-size="11">'+decadeLabel(e)+'</text>');
+  }
+  /* x grid + labels */
+  for(var d=Math.ceil(lx0); d<=Math.floor(lx1); d++){
+    var x = X(d), au = Math.pow(10,d);
+    var lab = sig(au,4) + " AU";
+    s.push('<line x1="'+x.toFixed(1)+'" y1="'+M.t+'" x2="'+x.toFixed(1)+'" y2="'+(M.t+ph)+
+           '" stroke="#161c23" stroke-width="1"/>');
+    s.push('<text x="'+x.toFixed(1)+'" y="'+(M.t+ph+18)+'" text-anchor="middle" fill="#66707c" '+
+           'font-family="ui-monospace,Menlo,monospace" font-size="11">'+lab+'</text>');
+  }
+
+  /* reference object */
+  if(refV > 0 && Math.log10(refV) >= ly0 && Math.log10(refV) <= ly1){
+    var yr = Y(Math.log10(refV));
+    var rlab = (function(r){
+      for(var i=0;i<REFS.length;i++) if(REFS[i].v === r) return REFS[i].t; return fmtLen(r);
+    })(refV);
+    s.push('<line x1="'+M.l+'" y1="'+yr.toFixed(1)+'" x2="'+(M.l+pw)+'" y2="'+yr.toFixed(1)+
+           '" stroke="#66707c" stroke-width="1" stroke-dasharray="5 4"/>');
+    s.push('<text x="'+(M.l+pw-6)+'" y="'+(yr-7).toFixed(1)+'" text-anchor="end" fill="#8b95a2" '+
+           'font-family="ui-monospace,Menlo,monospace" font-size="11">'+rlab+'</text>');
+  }
+
+  function path(key, colour){
+    var d = "", started = false;
+    pts.forEach(function(p){
+      if(!isFinite(p[key])) return;
+      var px = X(p.lx).toFixed(2), py = Y(Math.log10(p[key])).toFixed(2);
+      d += (started ? "L" : "M") + px + " " + py; started = true;
+    });
+    if(d) s.push('<path d="'+d+'" fill="none" stroke="'+colour+'" stroke-width="2.2" '+
+                 'stroke-linejoin="round" stroke-linecap="round"/>');
+  }
+  path("y1", "#5fd0f5");
+  path("y2", "#f2a65a");
+
+  /* axis titles */
+  s.push('<text x="'+(M.l+pw/2)+'" y="'+(H-8)+'" text-anchor="middle" fill="#9aa5b1" font-size="12">Distance</text>');
+  s.push('<text transform="translate(16,'+(M.t+ph/2)+') rotate(-90)" text-anchor="middle" fill="#9aa5b1" '+
+         'font-size="12">Smallest resolvable object (metres)</text>');
+
+  $("chart").innerHTML = s.join("");
+}
+
+/* ------------------------------------------------------------------- wiring */
+["dist","dist-u","wl","wl-u","dia","dia-u","criterion","ifon","ntel","sep","sep-u","refsel"].forEach(function(id){
+  var el = $(id);
+  el.addEventListener("input", render);
+  el.addEventListener("change", render);
+});
+
+render();
+})();
+</script>
+</body>
+</html>
