@@ -114,8 +114,93 @@ test('the slide scales are marked on exactly the rows that travel', () => {
   assert.equal(d.slide, false, 'D is fixed to the stock');
 });
 
+test('the slide band is separated from the stock by a visible seam', () => {
+  // The photographs show the seam only faintly, but it is what tells you the
+  // middle bar is a separate piece that can move. Without it the three bands
+  // read as one continuous strip and the slide looks decorative.
+  for (const face of ['front', 'back']) {
+    const band = rule.slideBand(face);
+    const rows = rule.layout(face);
+    const first = rows.find((r) => r.slide);
+    const lastStock = rows.slice(0, first.index).pop();
+
+    assert.equal(band.top, first.y, `${face} the band starts at the first slide row`);
+    if (lastStock) {
+      // The seam is the gap between the two pieces: it sits after the last
+      // stock row and before the first slide row, exactly one seam wide.
+      const stockBottom = lastStock.y + lastStock.height;
+      assert.ok(band.top >= stockBottom,
+        `${face} seam sits clear of the stock: band starts ${band.top}, stock ends ${stockBottom}`);
+      assert.equal(band.top - stockBottom, rule.SEAM,
+        `${face} the gap is exactly the seam width`);
+      assert.ok(rule.SEAM > 0, 'a seam width is defined, and it is visible');
+    }
+    assert.ok(band.bottom > band.top, `${face} band has height`);
+  }
+});
+
+test('the slide band is contiguous, with no stock rows inside it', () => {
+  for (const face of ['front', 'back']) {
+    const rows = rule.layout(face);
+    const indices = rows.map((r, i) => (r.slide ? i : -1)).filter((i) => i >= 0);
+    for (let i = 1; i < indices.length; i++) {
+      assert.equal(indices[i], indices[i - 1] + 1,
+        `${face} slide rows are adjacent: ${indices.join(',')}`);
+    }
+  }
+});
+
+test('the slide band is drawn taller than the fixed rows it sits between', () => {
+  for (const face of ['front', 'back']) {
+    const rows = rule.layout(face);
+    const slideRow = rows.find((r) => r.slide);
+    const stockRow = rows.find((r) => !r.slide);
+    assert.ok(slideRow.height > stockRow.height,
+      `${face} slide rows are taller: ${slideRow.height} vs ${stockRow.height}`);
+  }
+});
+
+test('the band sits inside the rule body, so the camera can frame it', () => {
+  for (const face of ['front', 'back']) {
+    const band = rule.slideBand(face);
+    const h = rule.height(face);
+    assert.ok(band.top >= 0, `${face} band starts inside the rule`);
+    assert.ok(band.bottom <= h, `${face} band ends inside the rule, ${band.bottom} <= ${h}`);
+  }
+});
+
+test('rows tile the rule, with a seam only where the slide begins', () => {
+  for (const face of ['front', 'back']) {
+    const rows = rule.layout(face);
+    for (let i = 1; i < rows.length; i++) {
+      const prev = rows[i - 1];
+      const gap = rows[i].y - (prev.y + prev.height);
+      const startsSlide = !prev.slide && rows[i].slide;
+      assert.ok(Math.abs(gap) < 1e-9 || (startsSlide && Math.abs(gap - rule.SEAM) < 1e-9),
+        `${face} gap before ${rows[i].name} is ${gap}, expected 0 or a seam`);
+    }
+  }
+});
+
+test('the seam appears once, at the top of the slide, not below it', () => {
+  // A seam under the slide as well would read as the rule being in three pieces
+  // rather than two.
+  for (const face of ['front', 'back']) {
+    const rows = rule.layout(face);
+    const gaps = [];
+    for (let i = 1; i < rows.length; i++) {
+      const gap = rows[i].y - (rows[i - 1].y + rows[i - 1].height);
+      if (Math.abs(gap) > 1e-9) gaps.push(i);
+    }
+    assert.equal(gaps.length, 1, `${face} has exactly one gap, got at rows ${gaps}`);
+    assert.equal(rows[gaps[0]].name, rule.SLIDE_SCALES[face][0],
+      `${face} the gap is immediately above the first slide row`);
+  }
+});
+
 test('an unknown face is refused rather than silently empty', () => {
   assert.throws(() => rule.layout('sideways'), /unknown face/);
+  assert.throws(() => rule.slideBand('sideways'), /unknown face/);
 });
 
 /* --------------------------------------------------------------- fidelity */

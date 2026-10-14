@@ -24,6 +24,15 @@
      proportions that fall out of that, not measurements off a ruler. */
   const ROW_H = 26;
   const TOP_PAD = 30;
+  const BOTTOM_PAD = 26;
+
+  /* The slide band is drawn taller than a fixed row and separated from the stock
+     by a seam. On the instrument the seam is a hairline where the sliding bar
+     meets the fixed scale plate; here it is strengthened, because a viewer who
+     cannot see where one piece of material ends and the next begins has no way
+     to tell that the middle rows can move. */
+  const SLIDE_BAND_SCALE = 1.25;
+  const SEAM = 8;
 
   /**
    * Front face, top to bottom.
@@ -78,21 +87,65 @@
 
   const FACES = { front: FRONT, back: BACK };
 
-  /** Row layout for a face, as y positions from the top of the stock. */
+  /**
+   * Row layout for a face, as y positions from the top of the stock.
+   *
+   * The slide's band is given extra height and separated from the fixed bands by
+   * a visible seam. The photographs show that seam only faintly, but it is what
+   * tells you the middle bar is a separate piece of material that can be moved,
+   * so it is drawn more strongly here than in a photograph.
+   */
   function layout(face) {
     const rows = FACES[face];
     if (!rows) throw new Error(`unknown face: ${face}`);
-    return rows.map((row, i) => Object.assign({}, row, {
-      y: TOP_PAD + i * ROW_H,
-      height: ROW_H,
-      index: i,
-      slide: SLIDE_SCALES[face].includes(row.name),
-    }));
+    const slideRows = SLIDE_SCALES[face];
+
+    let y = TOP_PAD;
+    return rows.map((spec, i) => {
+      const onSlide = slideRows.includes(spec.name);
+      // Spread the spec so every declared property survives into the layout: the
+      // renderer reads kind, red and unverified, and a row that quietly lost
+      // them would be drawn as something other than what the rule prints.
+      const placed = Object.assign({}, spec, {
+        y,
+        height: onSlide ? ROW_H * SLIDE_BAND_SCALE : ROW_H,
+        index: i,
+        slide: onSlide,
+        band: onSlide ? 'slide' : 'stock',
+      });
+      y += placed.height;
+      // A seam is a gap between two pieces, not a band added on top of one, so
+      // the space is reserved once, where the fixed stock gives way to the
+      // slide. Adding it before every slide row would split the sliding bar
+      // into four pieces, which is not what the instrument is.
+      const nextIsSlide = i < rows.length - 1 && slideRows.includes(rows[i + 1].name);
+      if (!onSlide && nextIsSlide) y += SEAM;
+      return placed;
+    });
+  }
+
+  /**
+   * The y range of the sliding band, so the renderer can draw the seam and the
+   * slide as one physical piece rather than inferring it from row flags.
+   */
+  function slideBand(face) {
+    const rows = layout(face);
+    const slideRows = rows.filter((r) => r.slide);
+    if (slideRows.length === 0) throw new Error(`no slide scales on ${face}`);
+    const first = slideRows[0];
+    const last = slideRows[slideRows.length - 1];
+    return {
+      top: first.y,
+      bottom: last.y + last.height,
+      height: last.y + last.height - first.y,
+    };
   }
 
   /** Height of a face's rule body, needed by the camera and the minimap. */
   function height(face) {
-    return TOP_PAD + FACES[face].length * ROW_H + 26;
+    const rows = layout(face);
+    const last = rows[rows.length - 1];
+    return last.y + last.height + BOTTOM_PAD;
   }
 
   /** Which face a scale lives on, so the app can switch to show it. */
@@ -102,5 +155,9 @@
     return null;
   }
 
-  return { FRONT, BACK, FACES, SLIDE_SCALES, ROW_H, TOP_PAD, layout, height, faceFor };
+  return {
+    FRONT, BACK, FACES, SLIDE_SCALES,
+    ROW_H, TOP_PAD, BOTTOM_PAD, SLIDE_BAND_SCALE, SEAM,
+    layout, slideBand, height, faceFor,
+  };
 });
