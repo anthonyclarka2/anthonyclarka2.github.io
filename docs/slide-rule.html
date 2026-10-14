@@ -36,24 +36,30 @@
   <span class="drawer-grip"></span><span>Drag down for a calculation</span>
 </div>
 
-<div class="grid">
+<div class="stack">
+  <!-- The calculation sits above the rule, not beside it. A slide rule is read
+       by setting and reading, and keeping the entry and the result in one band
+       above the instrument means the eye moves down to the rule once and stays
+       there, rather than travelling sideways to a column. -->
   <section class="panel expr-panel" id="expr-panel">
-    <h2>Calculation</h2>
-    <label class="lab" for="expr"><span>Expression</span><span class="hint" id="parse-note"></span></label>
-    <input type="text" id="expr" value="2.5 * 3.7" spellcheck="false" autocomplete="off"
-           aria-describedby="err">
-    <div id="err" class="err" role="alert" hidden></div>
-
-    <div class="chips" id="chips"></div>
-
-    <div class="big" id="result-card">
-      <div class="k"><span id="result-label">Result</span><span class="tag" id="result-tag"></span></div>
-      <div class="val" id="result-val">&mdash;</div>
-      <div class="subv" id="result-sub"></div>
+    <div class="expr-entry">
+      <h2>Calculation</h2>
+      <label class="lab" for="expr"><span>Expression</span><span class="hint" id="parse-note"></span></label>
+      <input type="text" id="expr" value="2.5 * 3.7" spellcheck="false" autocomplete="off"
+             aria-describedby="err">
+      <div id="err" class="err" role="alert" hidden></div>
+      <div class="chips" id="chips"></div>
     </div>
 
-    <div id="limits"></div>
-    <div id="notes"></div>
+    <div class="expr-outcome">
+      <div class="big" id="result-card">
+        <div class="k"><span id="result-label">Result</span><span class="tag" id="result-tag"></span></div>
+        <div class="val" id="result-val">&mdash;</div>
+        <div class="subv" id="result-sub"></div>
+      </div>
+      <div id="limits"></div>
+      <div id="notes"></div>
+    </div>
   </section>
 
   <section class="steps">

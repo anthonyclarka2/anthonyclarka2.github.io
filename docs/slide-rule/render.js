@@ -35,8 +35,23 @@
      the slide sticking out beyond the fixed plate. */
   const OVERHANG = 160;
 
-  /* The end caps the photographs show at both ends of the rule. */
+  /* The end caps the photographs show at both ends of the rule, and the clear
+     space between the last graduation and the cap. Without the gap the cap sits
+     on top of the final numbers on every scale. */
   const CAP_W = 46;
+  const GAP = 14;
+
+  /**
+   * How far left of the axis the drawing starts, and how wide it is in total.
+   * Exported so the camera can frame exactly what is drawn; if the two disagree
+   * the view crops a cap or shows empty space.
+   */
+  function drawnExtent(axisPx) {
+    return {
+      left: -OVERHANG - CAP_W,
+      width: axisPx + OVERHANG + CAP_W + GAP * 2,
+    };
+  }
 
   function el(name, attrs) {
     const node = document.createElementNS(NS, name);
@@ -79,7 +94,7 @@
           push(x, String(Number(v.toPrecision(12))), m === 1);
         }
       }
-      return out;
+      return thin(out);
     }
 
     if (row.kind === 'square') {
@@ -91,7 +106,7 @@
         if (x > g.axisPx) break;
         push(x, v % 10 === 0 ? String(v) : '', v % 10 === 0);
       }
-      return out;
+      return thin(out);
     }
 
     if (row.kind === 'cube' || row.kind === 'reciprocal') {
@@ -103,7 +118,7 @@
           push(x, String(Number(v.toPrecision(12))), m === 1);
         }
       }
-      return out;
+      return thin(out);
     }
 
     if (row.kind === 'projected') {
@@ -116,6 +131,40 @@
     }
 
     return out;
+  }
+
+  /**
+   * Drop labels that would run into their neighbours.
+   *
+   * A logarithmic scale crowds badly at the left of each decade, where 5, 6, 7,
+   * 8 and 9 sit within a few units of each other. Printing them all produces
+   * "500600700800900" and a graduation nobody can read, which is worse than
+   * printing fewer. Every graduation keeps its tick; only the labels thin out,
+   * so the scale still shows where each mark is.
+   *
+   * Labelling by DECADE rather than globally is what a real rule does: the
+   * crowded early decades are labelled 1, 2 and 5 only, and the later, more
+   * widely spaced decades carry the full set of digits.
+   */
+  function thin(ticks) {
+    const byDecade = new Map();
+    for (const tick of ticks) {
+      const key = Math.floor(tick.x / 100);
+      if (!byDecade.has(key)) byDecade.set(key, []);
+      byDecade.get(key).push(tick);
+    }
+
+    for (const group of byDecade.values()) {
+      if (group.length < 2) continue;
+      // How much room the labels have, judged by the tightest pair in the
+      // decade. A four digit label needs far more than a one digit one.
+      for (let i = 1; i < group.length; i++) {
+        const gap = group[i].x - group[i - 1].x;
+        const need = 5 + String(group[i].label).length * 3.2;
+        if (gap < need) group[i].label = '';
+      }
+    }
+    return ticks;
   }
 
   /** Which of geometry's named scales a row's graduations are read from. */
@@ -177,17 +226,17 @@
     group.appendChild(name);
 
     if (row.unverified) {
-      // A note in the row would sit on top of the scale's own graduations, and
-      // the graduations are the part a reader comes for. It goes in the margin
-      // beside the row's name instead.
+      // Drawn in the left margin, beyond the scale's name, so it cannot land on
+      // a graduation. The first decade starts at the index, which is at the far
+      // left of the graduated area, so the margin is the only free space.
       const note = el('text', {
-        x: 60,
-        y: (row.y - 4).toFixed(1),
+        x: -OVERHANG + 46,
+        y: (row.y - 3).toFixed(1),
         fill: 'var(--red-ink)',
-        'font-size': 8,
-        opacity: 0.8,
+        'font-size': 7,
+        opacity: 0.75,
       });
-      note.textContent = '· graduations not recovered from the photographs';
+      note.textContent = 'not recovered';
       group.appendChild(note);
     }
 
@@ -195,10 +244,19 @@
     return group;
   }
 
-  /** The aluminium end cap, with its fixing screws. */
+  /**
+   * The aluminium end cap, with its fixing screws.
+   *
+   * Set just beyond the last graduation rather than on top of it. The axis ends
+   * at its final mark, so a cap drawn from there would cover the numbers a
+   * reader needs at the end of the scale.
+   */
   function drawCap(parent, side, axisWidth, ruleHeight) {
     const group = el('g', { id: `cap-${side}` });
-    const x = side === 'left' ? -OVERHANG : axisWidth;
+    // Left of the first graduation there is only the overhang; the right end
+    // needs the same clearance, so the rule is drawn wider than the axis it is
+    // graduated on and the caps sit in the space beyond it.
+    const x = side === 'left' ? -OVERHANG - CAP_W : axisWidth + GAP;
     group.appendChild(el('rect', {
       x, y: 0, width: CAP_W, height: ruleHeight,
       fill: 'var(--metal)', stroke: 'var(--metal-edge)', 'stroke-width': 1, rx: 3,
@@ -285,8 +343,9 @@
     const g = geometry(options);
 
     svg.innerHTML = '';
-    const total = options.axisPx + OVERHANG * 2;
-    svg.setAttribute('viewBox', `${-OVERHANG} 0 ${total} ${ruleHeight}`);
+    const extent = drawnExtent(options.axisPx);
+    const total = extent.width;
+    svg.setAttribute('viewBox', `${extent.left} 0 ${total} ${ruleHeight}`);
 
     const stock = el('g', { id: 'stock' });
     const slide = el('g', { id: 'slide' });
@@ -298,26 +357,27 @@
        shadowed edge so the eye reads two materials rather than one strip. */
     stock.appendChild(el('rect', {
       id: 'stock-plate',
-      x: -OVERHANG, y: 0, width: total, height: band.top,
+      x: extent.left, y: 0, width: total, height: band.top,
       fill: 'var(--stock)', stroke: 'var(--stock-edge)', 'stroke-width': 1,
     }));
     stock.appendChild(el('rect', {
-      x: -OVERHANG, y: band.bottom, width: total, height: ruleHeight - band.bottom,
+      x: extent.left, y: band.bottom, width: total, height: ruleHeight - band.bottom,
       fill: 'var(--stock)', stroke: 'var(--stock-edge)', 'stroke-width': 1,
     }));
 
     const plate = el('rect', {
       id: 'slide-plate',
-      x: -OVERHANG, y: band.top, width: total, height: band.height,
+      x: extent.left, y: band.top, width: total, height: band.height,
       fill: 'var(--slide)', stroke: 'var(--slide-edge)', 'stroke-width': 1, rx: 2,
     });
     slide.appendChild(plate);
 
-    // Shadow along the top edge of the sliding bar, so it reads as sitting above
-    // the stock rather than printed on it.
+    // A shadow along the top edge of the sliding bar, so it reads as sitting above
+    // the stock rather than printed on it. Kept faint: on a pale slide a heavy
+    // band draws more attention than the seam it is meant to support.
     slide.appendChild(el('rect', {
-      x: -OVERHANG, y: band.top, width: total, height: 3,
-      fill: 'var(--slide-shadow)', opacity: 0.55,
+      x: extent.left, y: band.top, width: total, height: 2,
+      fill: 'var(--slide-shadow)', opacity: 0.35,
     }));
 
     /* Rows, each on the piece it is printed on. */
@@ -393,5 +453,5 @@
     }
   }
 
-  return { draw, move, graduations, scaleFor, OVERHANG, CAP_W };
+  return { draw, move, graduations, scaleFor, drawnExtent, OVERHANG, CAP_W, GAP };
 });

@@ -58,8 +58,11 @@ h1{font-size:clamp(22px,3.2vw,31px);margin:0 0 8px;letter-spacing:-.02em;font-we
 h1 .thin{color:var(--ink-3);font-weight:400}
 .sub{color:var(--ink-2);max-width:70ch;margin:0}
 
-.grid{display:grid;grid-template-columns:360px 1fr;gap:22px;align-items:start}
-@media (max-width:900px){.grid{grid-template-columns:1fr}}
+/* One column, top to bottom: the calculation, then the rule, then the steps.
+   A two column layout put the entry beside the instrument, which made the eye
+   travel sideways for every value read. */
+.stack{display:grid;gap:16px;align-content:start}
+.stack > .panel + .panel{margin-top:0}
 
 .panel{
   background:var(--panel);
@@ -74,6 +77,22 @@ h1 .thin{color:var(--ink-3);font-weight:400}
 .panel + .panel{margin-top:16px}
 .sticky{position:sticky;top:18px}
 @media (max-width:900px){.sticky{position:static}}
+
+/* The calculation panel is a single row across the full width: entry on the
+   left, the answer on the right. Stacked vertically it would push the rule
+   below the fold, and the whole point is that the two are read together. */
+.expr-panel{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(260px,340px);
+  gap:20px;
+  align-items:start;
+}
+.expr-panel .big{margin:0}
+.expr-outcome{min-width:0}
+.expr-entry{min-width:0}
+@media (max-width:900px){
+  .expr-panel{grid-template-columns:1fr;gap:14px}
+}
 
 .field{margin-bottom:15px}
 label.lab{
@@ -265,14 +284,14 @@ body.drawer-open .drawer-handle{background:var(--panel-2)}
   }
   body.drawer-open .expr-panel{transform:translateY(0)}
   body.drawer-open{overflow:hidden}
-  .grid{grid-template-columns:1fr}
   .sticky{position:static}
 }
 
 /* --------------------------------------------------------------- steps */
 
-.steps{margin-top:16px}
-.steps .panel + .panel{margin-top:14px}
+/* The stack already spaces its children, so only the panels inside the steps
+   section need their own gaps. */
+.steps{display:grid;gap:14px;align-content:start}
 .step-line{
   display:flex;gap:10px;align-items:baseline;
   padding:7px 0;border-bottom:1px solid var(--line);

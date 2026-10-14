@@ -49,8 +49,10 @@
   const CLOSE_FACTOR = 3;
 
   function zoomFor(which, viewport) {
-    const span = rule669.width() + render.OVERHANG * 2;
-    const framing = Math.max(viewport.width, 1) / span;
+    // Framed against what is DRAWN, not the graduated axis: the caps and the
+    // overhang are part of the picture and the view has to include them.
+    const extent = render.drawnExtent(RULE.axisPx);
+    const framing = Math.max(viewport.width, 1) / extent.width;
     return which === 'close' ? framing * CLOSE_FACTOR : framing;
   }
 
@@ -133,15 +135,21 @@
 
   function buildCamera(which, focus) {
     const viewport = viewportSize();
-    // The camera clamps and centres against rule.width, and the zoom is rule
-    // units per pixel. The two must describe the same span: passing the bare
-    // axis width while computing zoom over the full rule including the overhang
-    // gives a window a third of the size intended.
+    // The camera clamps and centres against the span it is given, and the zoom
+    // is derived from that same span. They must describe the same thing, or the
+    // window clamps against one width while being sized by another.
+    const extent = render.drawnExtent(RULE.axisPx);
+    // The camera assumes rule coordinates run from 0, but the drawing starts at
+    // a negative x so the left overhang and cap are visible. Shifting the
+    // origin here keeps the camera's arithmetic intact while the viewBox still
+    // matches what the renderer drew.
     cam = camera({
-      rule: { width: RULE.axisPx + render.OVERHANG * 2, height: rule669.height(face) },
+      rule: { width: extent.width, height: rule669.height(face) },
       viewport,
       zoom: zoomFor(which || 'overview', viewport),
     });
+    // The rule's own x is offset by the drawing's left edge.
+    cam = shifted(cam, -extent.left);
     if (focus !== undefined) cam = cam.withFocus(focus);
     return cam;
   }
@@ -321,7 +329,15 @@
     if (!cam) return;
     const w = cam.window();
     svg.setAttribute('viewBox',
-      `${w.x.toFixed(1)} ${w.y.toFixed(1)} ${w.w.toFixed(1)} ${w.h.toFixed(1)}`);
+      `${(w.x - originShift).toFixed(1)} ${w.y.toFixed(1)} ${w.w.toFixed(1)} ${w.h.toFixed(1)}`);
+  }
+
+  // How far the drawing's origin sits to the left of the camera's 0.
+  let originShift = 0;
+
+  function shifted(camera, shift) {
+    originShift = shift;
+    return camera;
   }
 
   function play() {
