@@ -28,19 +28,20 @@ without a mental trick — that story should come through.
 
 ## 2. Repo changes
 
-This is a GitHub Pages repo publishing from **`./site/`**. It previously held a
-single self-contained `index.html` at the root (the interplanetary telescope
-resolution calculator), now moved to `site/index.html`.
+This is a GitHub Pages repo publishing from **`./docs/`** (the GitHub convention).
+It originally held a single self-contained `index.html` at the repo root (the
+interplanetary telescope resolution calculator), now at `docs/index.html`.
 
 | File | Action |
 | --- | --- |
-| `site/index.html` | Currently the telescope calculator. Becomes the **landing page** linking to both tools |
-| `site/telescope.html` | `git mv site/index.html site/telescope.html`; contents unchanged except the CSP meta and a "back to index" link |
-| `site/slide-rule.html` | Markup shell only |
-| `site/slide-rule.css` | All styling |
-| `site/slide-rule.js` | All logic, IIFE + strict mode |
+| `docs/index.html` | Currently the telescope calculator. Becomes the **landing page** linking to both tools |
+| `docs/telescope.html` | `git mv docs/index.html docs/telescope.html`; contents unchanged except the CSP meta and a "back to index" link |
+| `docs/slide-rule.html` | Markup shell only |
+| `docs/slide-rule.css` | All styling |
+| `docs/slide-rule.js` | All logic, IIFE + strict mode |
 
-`plans/` is outside the published directory and is never served.
+`plans/` is outside the published directory and is never served. `docs/CNAME`
+already holds the custom domain, so it stays as-is.
 
 ### CSP
 
@@ -50,7 +51,7 @@ The existing page ships a strict CSP:
 default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; ...
 ```
 
-Splitting into external `css`/`js` requires `'self'`, so `site/telescope.html`
+Splitting into external `css`/`js` requires `'self'`, so `docs/telescope.html`
 becomes:
 
 ```
@@ -274,8 +275,8 @@ enlarges just the two scales currently in play.
 3. **Parser + evaluator** → AST
 4. **Tween engine** + choreography compiler (operation → steps)
 5. **UI shell** — input, chips, transport, result card
-6. **Landing page** — turn `site/index.html` into the landing page and relocate the
-   telescope calculator to `site/telescope.html`
+6. **Landing page** — turn `docs/index.html` into the landing page and relocate
+   the telescope calculator to `docs/telescope.html`
 
 ### Self-test
 
