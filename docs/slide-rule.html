@@ -29,8 +29,15 @@
   </p>
 </header>
 
+<!-- Mobile puts the entry behind this handle so the rule keeps the screen
+     while a calculation runs. Dragging it downward opens the drawer. -->
+<div class="drawer-handle" id="drawer-handle" role="button" tabindex="0"
+     aria-label="Drag down to enter a calculation" aria-expanded="false">
+  <span class="drawer-grip"></span><span>Drag down for a calculation</span>
+</div>
+
 <div class="grid">
-  <section class="panel sticky">
+  <section class="panel expr-panel" id="expr-panel">
     <h2>Calculation</h2>
     <label class="lab" for="expr"><span>Expression</span><span class="hint" id="parse-note"></span></label>
     <input type="text" id="expr" value="2.5 * 3.7" spellcheck="false" autocomplete="off"
@@ -49,16 +56,30 @@
     <div id="notes"></div>
   </section>
 
-  <section>
+  <section class="steps">
+    <div class="panel minimap-strip">
+      <h2>Overview</h2>
+      <svg id="minimap" viewBox="-160 0 1320 376" preserveAspectRatio="none"
+           role="img" aria-label="The whole rule, showing the slide position and what the main view is showing"></svg>
+      <div class="face-switch">
+        <button type="button" class="chip on" data-face="front">Front</button>
+        <button type="button" class="chip" data-face="back">Back</button>
+      </div>
+    </div>
+
     <div class="panel" id="rule-panel">
       <h2>The rule</h2>
-      <svg id="rule" viewBox="-160 0 1400 430" role="img"
-           aria-labelledby="rule-title rule-desc">
-        <title id="rule-title">A ten inch Deci-Log slide rule</title>
-        <desc id="rule-desc">The fixed stock carries the D, A, CI and Ln scales.
-        The sliding rule carries C, B, C|, K, S, T and ST. A hairline cursor
-        reads across both.</desc>
-      </svg>
+      <div class="rule-landscape">
+        <div class="rule-wrap">
+          <svg id="rule" role="img" aria-labelledby="rule-title rule-desc">
+            <title id="rule-title">K&amp;E 669 slide rule</title>
+            <desc id="rule-desc">A ten inch log-log slide rule. The fixed scale
+            plate carries the rows above and below; the sliding plate carries
+            the band in the middle. A glass cursor with a metal surround reads
+            across both.</desc>
+          </svg>
+        </div>
+      </div>
       <div class="transport">
         <button type="button" id="play" class="btn">Play</button>
         <button type="button" id="step-back" class="btn" aria-label="Previous step">&#9664;</button>
@@ -105,10 +126,15 @@
   </section>
 </div>
 
+<!-- The modules are loaded with a cache-busting query because a plain
+     http.server revalidates lazily and a stale geometry module silently renders
+     a rule whose graduations no longer match the ones the planner aims at. -->
 <script src="slide-rule/geometry.js"></script>
 <script src="slide-rule/parser.js"></script>
 <script src="slide-rule/plan.js"></script>
 <script src="slide-rule/tween.js"></script>
+<script src="slide-rule/camera.js"></script>
+<script src="slide-rule/rule669.js"></script>
 <script src="slide-rule/render.js"></script>
 <script src="slide-rule/app.js"></script>
 </body>

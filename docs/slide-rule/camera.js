@@ -74,14 +74,31 @@
      * @param {number} nextZoom rule units per screen pixel
      */
     function make(focus, nextZoom) {
+      // The window spans the same fraction of the rule's width as the viewport
+      // does of itself, and its HEIGHT is scaled to match, so the graduations
+      // keep their true spacing rather than being stretched to fill the element.
+      //
+      // Deriving the height from the viewport's aspect instead is wrong for an
+      // object this shape. The rule is roughly three and a half units wide for
+      // every one tall; a viewport of a different ratio would either crop rows
+      // off the top and bottom or leave bands of empty space, and both make the
+      // rule look like something other than what it is.
+      const ruleAspect = rule.width / rule.height;
+      // Deliberately NOT clamped to the rule's width. A window wider than the
+      // rule when zoomed out is the correct framing: it centres the instrument
+      // with empty space either side, which reads as "this is the whole rule"
+      // rather than as a mistake.
+      const windowWidth = viewport.width / nextZoom;
+      const windowHeight = windowWidth / ruleAspect;
+
       const state = {
         rule,
         viewport,
         zoom: nextZoom,
         focus,
         scale: 1 / nextZoom,
-        windowWidth: viewport.width / nextZoom,
-        windowHeight: viewport.height / nextZoom,
+        windowWidth,
+        windowHeight,
       };
 
       return {

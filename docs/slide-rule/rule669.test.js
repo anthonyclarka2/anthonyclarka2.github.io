@@ -198,6 +198,15 @@ test('the seam appears once, at the top of the slide, not below it', () => {
   }
 });
 
+test('the graduated width is exported, since the camera clamps against it', () => {
+  // The camera is handed this to bound its window. If it is missing the
+  // renderer throws while drawing and the animation silently never starts,
+  // which is exactly what happened once.
+  assert.equal(typeof rule.width(), 'number', 'width is a function');
+  assert.ok(rule.width() > 0, 'and has a positive value');
+  assert.ok(rule.width() >= 1000, 'at least the four decades the rule carries');
+});
+
 test('an unknown face is refused rather than silently empty', () => {
   assert.throws(() => rule.layout('sideways'), /unknown face/);
   assert.throws(() => rule.slideBand('sideways'), /unknown face/);

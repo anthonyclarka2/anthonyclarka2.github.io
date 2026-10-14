@@ -15,14 +15,22 @@
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
   --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
 
-  /* The rule itself is the one place a material appears: a pale stock and a
-     darker slide, the way a real rule reads under a lamp. */
-  --stock:#e8e2d4;
-  --stock-edge:#c9c1ae;
-  --slide:#2a2f38;
-  --slide-edge:#161a20;
-  --rule-ink:#20242b;
-  --rule-ink-2:#4a5260;
+  /* The instrument's materials. These are the only surfaces in the page that
+     are not flat UI, and they are what make the rule read as a physical object
+     rather than a diagram of one. */
+  --stock:#e6e0d0;
+  --stock-edge:#b9b1a0;
+  --slide:#2b313a;
+  --slide-edge:#14181e;
+  --slide-shadow:rgba(0,0,0,.45);
+  --slide-ink:#cfd6df;
+  --rule-ink:#22262d;
+  --red-ink:#a8342c;
+  --metal:#b9bcc0;
+  --metal-edge:#6d7278;
+  --glass:rgba(214,222,230,.16);
+  --glass-shine:rgba(255,255,255,.5);
+  --hairline:#0b0e12;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -186,3 +194,91 @@ strong{color:var(--ink);font-weight:600}
 @media (prefers-reduced-motion:reduce){
   *{transition-duration:.01ms !important}
 }
+/* ------------------------------------------------------------------ rule */
+
+/* The rule takes the full width of the page less a small margin either side,
+   as the instrument is long and thin. The SVG scales to fit, so the same
+   drawing serves a phone and a desktop without a second layout. */
+#rule-panel{padding:14px 14px 12px}
+.rule-wrap{
+  width:100%;
+  margin:0 -4px;
+  overflow:hidden;
+  border-radius:6px;
+  background:var(--slide-edge);
+}
+/* An SVG with no intrinsic size collapses when height is auto, so the viewBox
+   is the only thing giving it a shape. The rule is long and thin, and its
+   aspect has to be pinned or the graduations come out stretched. */
+#rule{display:block;width:100%;height:auto;aspect-ratio:1320 / 400}
+#minimap{display:block;width:100%;height:54px;background:var(--panel-2);border-radius:5px}
+.minimap-strip{margin-top:8px}
+.minimap-strip h2{margin-bottom:6px}
+
+.face-switch{display:flex;gap:6px;margin-top:10px}
+
+/* On a narrow screen the rule is rotated into landscape, because a slide rule
+   read the wrong way round is not a slide rule. */
+@media (max-width:760px){
+  .rule-landscape{height:46vh;display:flex;align-items:center;justify-content:center}
+  .rule-landscape .rule-wrap{width:calc(100vh - 24px);transform:rotate(90deg);margin:0}
+  #minimap{height:40px}
+}
+
+/* ------------------------------------------------------------------ drawer */
+
+/* Mobile puts the expression entry behind a handle, so the rule keeps the
+   whole screen while a calculation is running. The handle says where to drag. */
+.drawer-handle{
+  display:none;
+  position:fixed;left:0;right:0;top:0;z-index:20;
+  align-items:center;justify-content:center;gap:8px;
+  padding:8px 12px 10px;
+  background:var(--panel);
+  border-bottom:1px solid var(--line);
+  color:var(--ink-2);font-size:12px;cursor:grab;touch-action:none;
+}
+.drawer-handle::after{
+  content:"";width:44px;height:4px;border-radius:2px;background:var(--line-2);
+}
+.drawer-handle:active{cursor:grabbing}
+.drawer-grip{
+  width:44px;height:4px;border-radius:2px;background:var(--line-2);
+}
+body.drawer-open .drawer-handle{background:var(--panel-2)}
+
+@media (max-width:760px){
+  .drawer-handle{display:flex}
+  .expr-panel{
+    position:fixed;inset:0 0 auto 0;z-index:19;
+    transform:translateY(-100%);
+    transition:transform .22s ease;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    padding:52px 16px 16px;
+    max-height:82vh;overflow:auto;
+  }
+  body.drawer-open .expr-panel{transform:translateY(0)}
+  body.drawer-open{overflow:hidden}
+  .grid{grid-template-columns:1fr}
+  .sticky{position:static}
+}
+
+/* --------------------------------------------------------------- steps */
+
+.steps{margin-top:16px}
+.steps .panel + .panel{margin-top:14px}
+.step-line{
+  display:flex;gap:10px;align-items:baseline;
+  padding:7px 0;border-bottom:1px solid var(--line);
+  font-size:13.5px;color:var(--ink-3);
+}
+.step-line:last-child{border-bottom:0}
+.step-line .n{
+  font-family:var(--mono);font-size:11px;color:var(--ink-3);
+  min-width:20px;text-align:right;flex:0 0 auto;
+}
+.step-line.done{color:var(--ink-2)}
+.step-line.current{color:var(--ink)}
+.step-line.current .n{color:var(--accent)}
+.explain{color:var(--ink-2);font-size:13px;margin:0}

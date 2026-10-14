@@ -39,14 +39,16 @@ test('a zoomed window shows a fraction of the rule, centred on the focus', () =>
   close(win.x + win.w / 2, 620, 'unfocused window sits on the rule midpoint');
 });
 
-test('the window keeps the viewport aspect ratio, so nothing is stretched', () => {
+test('the window keeps the RULE aspect ratio, so the rows are not cropped', () => {
   const win = cam().window();
   close(win.y, 0, 'window starts at the top of the rule');
-  // One scale factor drives both axes. If the height were pinned to the rule
-  // while the width narrowed, the same viewBox would render the graduations at
-  // two different sizes depending on which axis the caller measured.
-  close(win.w / win.h, VIEWPORT.width / VIEWPORT.height, 'aspect ratio preserved');
-  close(win.h, 143.33333333333334, 'window height at zoom 3');
+  // The height follows the RULE's proportions, not the viewport's. The rule is
+  // about 3.3 units wide for every one tall; a viewport of another ratio would
+  // crop rows off the top and bottom or leave empty bands, and either makes the
+  // rule look unlike itself.
+  close(win.w / win.h, RULE.width / RULE.height, 'aspect follows the rule');
+  close(win.h, WIDTH_AT_ZOOM_3 / (RULE.width / RULE.height),
+    'window height at zoom 3');
 });
 
 test('the window never leaves the rule, at any focus, including both ends', () => {
@@ -91,6 +93,13 @@ test('a window wider than the rule is centred and allowed to overflow', () => {
   close(win.w, 2400, 'window width at zoom 0.5');
   close(win.x, -580, 'window centred on the rule, overflowing both ends');
   assert.ok(win.x < 0 && win.x + win.w > RULE.width, 'overflow is deliberate');
+});
+
+test('a window wider than the rule still keeps the rule aspect', () => {
+  // The overflow case must not quietly reintroduce the viewport's aspect, or a
+  // zoomed-out view would letterbox the rule instead of framing it.
+  const win = cam({ zoom: 0.5 }).window();
+  close(win.w / win.h, RULE.width / RULE.height, 'aspect still follows the rule');
 });
 
 test('withFocus can change the zoom in the same call', () => {

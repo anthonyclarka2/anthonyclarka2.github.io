@@ -11,7 +11,9 @@
 
   const { plan } = window.SlideRulePlan;
   const { createTween } = window.SlideRuleTween;
+  const { camera, easeInOutCubic } = window.SlideRuleCamera;
   const render = window.SlideRuleRender;
+  const rule669 = window.SlideRule669;
   const { ParseError } = window.SlideRuleParser;
 
   const RULE = { axisPx: 1000, decades: 4 };
@@ -21,11 +23,36 @@
   const expr = $('expr');
 
   let parts = null;
+  let miniParts = null;
   let current = null;      // the plan being shown
   let tween = null;
+  let cam = null;
+  let face = 'front';
   let raf = 0;
   let startedAt = 0;
   let playing = false;
+
+  /**
+   * Zoom, as the camera takes it: the camera computes `window.width =
+   * viewport.width / zoom`, so to frame a rule `span` units wide across the
+   * whole viewport the zoom is `viewport.width / span`. A LARGER zoom shows
+   * less of the rule and so zooms in.
+   *
+   * That ratio is the thing to get right. Its reciprocal -- span over viewport
+   * width -- produces a window a seventh of the rule's length, which is the
+   * mistake this comment exists to prevent.
+   *
+   * `overview` frames the whole rule. `close` multiplies by CLOSE_FACTOR,
+   * showing roughly a third of it, which is where the fine graduations between
+   * the labelled ones become readable -- the reason the view zooms at all.
+   */
+  const CLOSE_FACTOR = 3;
+
+  function zoomFor(which, viewport) {
+    const span = rule669.width() + render.OVERHANG * 2;
+    const framing = Math.max(viewport.width, 1) / span;
+    return which === 'close' ? framing * CLOSE_FACTOR : framing;
+  }
 
   /* Reduced motion is a request, not a preference to be argued with: the
      animation is the explanation, so it jumps straight to the settled state
@@ -87,19 +114,67 @@
     return null;
   }
 
-  function drawRule(p) {
-    parts = render.draw(svg, RULE, {
-      scale: (scalesUsed(p) || [])[0],
-      trigScale: trigScaleFor(p),
+  /**
+   * The viewport the camera works in.
+   *
+   * Read from the element's own box rather than assumed, because the camera
+   * divides by it and a zero-width box would make every viewBox NaN. The rule
+   * is laid out by CSS, so on the very first draw the box may not exist yet;
+   * falling back to the rule's own proportions keeps the first frame sane and
+   * the resize handler corrects it once layout has happened.
+   */
+  function viewportSize() {
+    const w = svg.clientWidth;
+    const h = svg.clientHeight;
+    if (w > 0 && h > 0) return { width: w, height: h };
+    const total = RULE.axisPx + render.OVERHANG * 2;
+    return { width: total, height: rule669.height(face) };
+  }
+
+  function buildCamera(which, focus) {
+    const viewport = viewportSize();
+    // The camera clamps and centres against rule.width, and the zoom is rule
+    // units per pixel. The two must describe the same span: passing the bare
+    // axis width while computing zoom over the full rule including the overhang
+    // gives a window a third of the size intended.
+    cam = camera({
+      rule: { width: RULE.axisPx + render.OVERHANG * 2, height: rule669.height(face) },
+      viewport,
+      zoom: zoomFor(which || 'overview', viewport),
     });
-    render.setHighlight(parts, scalesUsed(p));
-    if (p.supported) {
-      const end = p.steps.length ? p.steps[p.steps.length - 1] : null;
-      render.move(parts, 0, 0);
-      if (end) render.move(parts, 0, 0);
-    } else {
-      render.move(parts, 0, 0);
+    if (focus !== undefined) cam = cam.withFocus(focus);
+    return cam;
+  }
+
+  function drawRule(p) {
+    // An operation is only visible on the face that prints the scales it needs.
+    // Trig lives on the back, so the rule turns over rather than the animation
+    // pretending a scale exists on the front.
+    const needed = scalesUsed(p) || [];
+    const wanted = needed.find((n) => rule669.faceFor(n));
+    if (wanted && rule669.faceFor(wanted) !== face) {
+      face = rule669.faceFor(wanted);
+      for (const chip of document.querySelectorAll('[data-face]')) {
+        chip.classList.toggle('on', chip.dataset.face === face);
+      }
     }
+
+    parts = render.draw(svg, RULE, { face });
+    miniParts = render.draw($('minimap'), RULE, { face, minimap: true });
+
+    buildCamera('overview', RULE.axisPx / 2);
+    applyViewBox();
+
+    render.move(parts, 0, 0);
+    render.move(miniParts, 0, 0, cam.overview());
+  }
+
+  function setFace(next) {
+    face = next;
+    for (const chip of document.querySelectorAll('[data-face]')) {
+      chip.classList.toggle('on', chip.dataset.face === face);
+    }
+    if (current) drawRule(current);
   }
 
   /* ------------------------------------------------------------- text panels */
@@ -216,15 +291,37 @@
     const state = tween.stateAt(elapsed);
     render.move(parts, state.slide, state.cursor);
 
+    // The main view follows the reading. While the slide is moving the camera
+    // eases in so the graduations being set are legible; once it settles the
+    // view pulls back to show the answer in context. Both are driven from the
+    // same clock as the rule itself, so the zoom cannot lag or race the motion.
+    const t = tween.totalMs > 0 ? Math.min(elapsed / tween.totalMs, 1) : 1;
+    const vp = viewportSize();
+    const far = zoomFor('overview', vp);
+    const near = zoomFor('close', vp);
+    const zoom = far + (near - far) * easeInOutCubic(Math.min(t / 0.7, 1));
+    cam = cam.withFocus(state.cursor, { zoom });
+    applyViewBox();
+
+    render.move(miniParts, state.slide, state.cursor, cam.window());
+
     const step = Math.floor(tween.progressAt(elapsed));
     markStep(step);
-    $('scrub').value = String(Math.round((elapsed / tween.totalMs) * 1000));
+    $('scrub').value = String(Math.round(t * 1000));
 
     if (elapsed >= tween.totalMs) {
       stop();
       return;
     }
     raf = requestAnimationFrame(frame);
+  }
+
+  /** Push the camera's window onto the main viewBox. */
+  function applyViewBox() {
+    if (!cam) return;
+    const w = cam.window();
+    svg.setAttribute('viewBox',
+      `${w.x.toFixed(1)} ${w.y.toFixed(1)} ${w.w.toFixed(1)} ${w.h.toFixed(1)}`);
   }
 
   function play() {
@@ -251,6 +348,18 @@
     stop();
     const state = tween.stateAt(ms);
     render.move(parts, state.slide, state.cursor);
+
+    const t = tween.totalMs > 0 ? Math.min(ms / tween.totalMs, 1) : 1;
+    const vp = viewportSize();
+    const far = zoomFor('overview', vp);
+    const near = zoomFor('close', vp);
+    const zoom = far + (near - far) * easeInOutCubic(Math.min(t / 0.7, 1));
+    if (cam) {
+      cam = cam.withFocus(state.cursor, { zoom });
+      applyViewBox();
+    }
+    if (miniParts) render.move(miniParts, state.slide, state.cursor, cam ? cam.window() : null);
+
     markStep(Math.floor(tween.progressAt(ms)));
   }
 
@@ -327,6 +436,47 @@
     else if (e.key === 'ArrowLeft') { stepBy(-1); e.preventDefault(); }
     else if (e.key === ' ') { $('play').click(); e.preventDefault(); }
   });
+
+  for (const chip of document.querySelectorAll('[data-face]')) {
+    chip.addEventListener('click', () => setFace(chip.dataset.face));
+  }
+
+  /* The mobile drawer. Dragging the handle down opens the entry panel, and a
+     tap works too, because a gesture-only affordance is unreachable by keyboard
+     and unhelpful to anyone who does not discover the drag. */
+  const handle = $('drawer-handle');
+  function setDrawer(open) {
+    document.body.classList.toggle('drawer-open', open);
+    handle.setAttribute('aria-expanded', String(open));
+  }
+  handle.addEventListener('click', () => setDrawer(!document.body.classList.contains('drawer-open')));
+  handle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { setDrawer(true); e.preventDefault(); }
+  });
+
+  let dragY = null;
+  handle.addEventListener('pointerdown', (e) => { dragY = e.clientY; });
+  handle.addEventListener('pointerup', (e) => {
+    if (dragY === null) return;
+    if (e.clientY - dragY > 18) setDrawer(true);
+    else if (e.clientY - dragY < -18) setDrawer(false);
+    dragY = null;
+  });
+
+  // A resize changes the viewport the camera works in, so the window has to be
+  // recomputed or the rule would stay framed for the old width.
+  window.addEventListener('resize', () => {
+    if (!cam) return;
+    const focus = tween ? tween.stateAt(currentMs()).cursor : RULE.axisPx / 2;
+    const wasClose = cam.zoom > zoomFor('overview', viewportSize()) * 1.5;
+    buildCamera(wasClose ? 'close' : 'overview', focus);
+    applyViewBox();
+    if (miniParts) render.move(miniParts, parts.slide ? 0 : 0, 0, cam.window());
+  });
+
+  function currentMs() {
+    return (Number($('scrub').value) / 1000) * (tween ? tween.totalMs : 0);
+  }
 
   update();
 })();

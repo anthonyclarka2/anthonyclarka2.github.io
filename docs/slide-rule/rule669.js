@@ -148,6 +148,15 @@
     return last.y + last.height + BOTTOM_PAD;
   }
 
+  /**
+   * The graduated width of the rule. This is a property of the instrument, not
+   * of the current face, and is what the camera clamps against so a window can
+   * never show graduations past the end of the stock. It is kept separate from
+   * the drawn width, which also includes the slide's overhang.
+   */
+  const AXIS_WIDTH = 1000;
+  function width() { return AXIS_WIDTH; }
+
   /** Which face a scale lives on, so the app can switch to show it. */
   function faceFor(name) {
     if (FRONT.some((r) => r.name === name)) return 'front';
@@ -158,6 +167,6 @@
   return {
     FRONT, BACK, FACES, SLIDE_SCALES,
     ROW_H, TOP_PAD, BOTTOM_PAD, SLIDE_BAND_SCALE, SEAM,
-    layout, slideBand, height, faceFor,
+    layout, slideBand, height, width, faceFor,
   };
 });

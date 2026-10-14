@@ -1,332 +1,397 @@
 /**
- * SVG renderer for the slide rule.
+ * SVG renderer for the K&E 669.
  *
- * This is the only module that touches the DOM. Everything it draws comes from
- * the geometry module's positions and the tween module's state, so the maths is
- * testable without a browser and this file is left as a thin adapter: given a
- * rule and a position, draw it.
+ * The only module that touches the DOM. It draws from two sources of truth and
+ * invents nothing: `geometry` says where each graduation falls, and `rule669`
+ * says which rows exist, which piece of material each is printed on, and which
+ * of them could not be read off the photographs. That last part matters -- the
+ * rows whose graduations are unknown are drawn as a name and left blank, because
+ * plausible invented ticks would be worse than an honest gap.
  *
- * Two groups move independently. `#slide` translates horizontally for the
- * sliding rule; `#cursor` translates for the hairline. Both are plain transform
- * writes, so the rAF loop in app.js never touches layout.
+ * The rule is drawn as two pieces. The fixed scale plate carries the rows above
+ * and below the band; the sliding plate carries the band's rows and lives inside
+ * the `#slide` group so it travels. A seam separates them, sized by `rule669`
+ * rather than chosen here, so the renderer cannot quietly draw the rule as one
+ * continuous strip.
+ *
+ * The cursor is drawn as the instrument's glass: a transparent body with a metal
+ * surround, four corner screws, and a hairline down the middle. It is the piece
+ * of the drawing a viewer reads first, so it gets more geometry than the rest.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./geometry.js'));
+    module.exports = factory(require('./geometry.js'), require('./rule669.js'));
   } else {
-    root.SlideRuleRender = factory(root.SlideRuleGeometry);
+    root.SlideRuleRender = factory(root.SlideRuleGeometry, root.SlideRule669);
   }
-})(typeof self !== 'undefined' ? self : globalThis, function (geometryLib) {
+})(typeof self !== 'undefined' ? self : globalThis, function (geometryLib, rule669) {
   'use strict';
 
   const { geometry } = geometryLib;
-
   const NS = 'http://www.w3.org/2000/svg';
 
-  /**
-   * Scale layout. Ten scales is a lot for one rule, so each is a row with a
-   * height, and the rows are laid out in the order a person reads them: the
-   * stock's own scales at the top, the slide's below it, the cursor last.
-   */
-  const STOCK_SCALES = [
-    { name: 'D', label: 'D', y: 26 },
-    { name: 'A', label: 'A', y: 96 },
-    { name: 'CI', label: 'CI', y: 150 },
-    { name: 'Ln', label: 'Ln', y: 196 },
-  ];
-  const SLIDE_SCALES = [
-    { name: 'C', label: 'C', y: 246 },
-    { name: 'B', label: 'B', y: 296 },
-    { name: 'C|', label: 'C|', y: 340 },
-    { name: 'K', label: 'K', y: 384 },
-  ];
-  // S, T and ST are projected and would push the rule past 430 tall, so they
-  // share a row: only the one in use is drawn, and the row says which.
-  const TRIG_SCALES = [
-    { name: 'S', label: 'S', y: 234 },
-    { name: 'T', label: 'T', y: 288 },
-    { name: 'ST', label: 'ST', y: 342 },
-  ];
+  /* How far the slide protrudes left of the stock. Tangent above 45 degrees
+     falls off the left of the index, and on the instrument that is the part of
+     the slide sticking out beyond the fixed plate. */
+  const OVERHANG = 160;
 
-  const SVG_W = 1400;
-  const SVG_H = 430;
-  const OVERHANG = 160; // px of slide protruding left of the stock, as on a real rule
+  /* The end caps the photographs show at both ends of the rule. */
+  const CAP_W = 46;
 
   function el(name, attrs) {
     const node = document.createElementNS(NS, name);
     if (attrs) {
-      for (const key in attrs) node.setAttribute(key, attrs[key]);
+      for (const key in attrs) {
+        if (attrs[key] !== undefined && attrs[key] !== null) {
+          node.setAttribute(key, attrs[key]);
+        }
+      }
     }
     return node;
   }
 
+  /* ---------------------------------------------------------- graduations */
+
   /**
-   * Graduations for a scale. Each row is derived from the scale's own
-   * position for a value, rather than from an independent loop, so a scale's
-   * ticks always land where `read` says that scale is graduated. Computing them
-   * separately is how B and K ended up running past the right edge of the rule.
+   * The values a row prints, as graduations on the rule.
+   *
+   * Every scale here is a graduation of the one logarithmic stock, so the list
+   * is "which values does this row mark" and the position comes from geometry.
+   * Writing the positions out again here is how the renderer and the planner
+   * came to disagree about where a 2 was.
    */
-  function graduations(g, scale) {
+  function graduations(g, row) {
+    if (row.kind === 'unverified') return [];
+
     const out = [];
-    // Clip to the RULE, not to the canvas. The canvas is deliberately wider so
-    // the overhang has somewhere to be drawn, but a graduation printed past the
-    // end of the rule is a printing error, not a graduation.
-    const right = g.axisPx;
     const push = (x, label, major) => {
-      if (Number.isFinite(x) && x >= -OVERHANG && x <= right) out.push({ x, label, major });
+      if (Number.isFinite(x) && x >= -OVERHANG && x <= g.axisPx) out.push({ x, label, major });
     };
 
-    // Log and power scales: walk the values a rule actually prints.
-    if (scale === 'D' || scale === 'C' || scale === 'B' || scale === 'K' || scale === 'C|') {
-      // A rule prints from 1 rightwards. Decades below 1 fall on the overhang
-      // and are not printed, so the walk starts at dec 0.
+    const scale = scaleFor(row);
+
+    if (row.kind === 'log') {
       for (let dec = 0; dec < g.decades; dec++) {
         for (let m = 1; m < 10; m++) {
-          const value = m * Math.pow(10, dec);
-          const x = g.posOf(scale, value);
-          // B and K run out of rule well before D does, which is true of a real
-          // rule too: three decades of D fit where the cubed scale has room for
-          // only a third as many values. The loop stops when a decade no longer
-          // starts on the rule, rather than drawing past the end.
-          if (x > right) return out;
-          // The label is the value at that tick, not the mantissa: in the
-          // second decade the tick at 2x10 reads 20, and a rule prints "20".
-          push(x, String(Number(value.toPrecision(12))), m === 1);
+          const v = m * Math.pow(10, dec);
+          const x = g.posOf(scale, v);
+          if (x > g.axisPx) return out;
+          push(x, String(Number(v.toPrecision(12))), m === 1);
         }
       }
       return out;
     }
 
-    if (scale === 'A') {
-      // A runs 0 to 100 then restarts, so a cycle spans two decades of the
-      // axis. A four decade rule is exactly two cycles wide, and because each
-      // cycle covers the whole span the second has nothing left to print --
-      // its 10 would sit precisely where the rule ends. So only the cycles
-      // that fit are drawn, which for four decades is the first.
+    if (row.kind === 'square') {
+      // A runs 0 to 100 and then restarts. One cycle spans two decades, so a
+      // four decade rule shows exactly one and the second would begin precisely
+      // where the rule ends.
       for (let v = 1; v <= 100; v++) {
-        for (let cycle = 0; cycle * 2 < g.decades; cycle++) {
-          const x = g.posOf('A', v) + cycle * 2 * g.dpx;
-          if (x > right) continue;
-          // Each cycle is two decades further along the axis, and A's values grow
-          // faster than the axis does, so cycle 1 runs 10 to 1000. Labelling it
-          // by repeating cycle 0 would put a tick that reads 100 under the
-          // label "10" and make the scale unreadable.
-          const shown = v * Math.pow(10, cycle * 2) / Math.pow(10, cycle);
-          // Cycle 0's 100 and cycle 1's 10 land on the same axis position with
-          // the same value. A physical rule prints one graduation there, so
-          // merge them and keep whichever carries a label.
-          const clash = out.find((t) => Math.abs(t.x - x) < 0.5);
-          if (clash) {
-            if (v % 10 === 0) { clash.label = String(shown); clash.major = true; }
-            continue;
-          }
-          push(x, v % 10 === 0 ? String(shown) : '', v % 10 === 0);
-        }
+        const x = g.posOf(scale, v);
+        if (x > g.axisPx) break;
+        push(x, v % 10 === 0 ? String(v) : '', v % 10 === 0);
       }
-      out.sort((a, b) => a.x - b.x);
       return out;
     }
 
-    if (scale === 'CI') {
-      // CI runs backwards: 1 at the index, larger values to the left on the
-      // overhang, which is where they sit on a physical rule.
-      for (let dec = 0; dec <= g.decades; dec++) {
+    if (row.kind === 'cube' || row.kind === 'reciprocal') {
+      for (let dec = 0; dec < g.decades; dec++) {
         for (let m = 1; m < 10; m++) {
-          const x = g.posOf('CI', m * Math.pow(10, dec));
-          if (x > right) continue;
-          push(x, String(Number((m * Math.pow(10, dec)).toPrecision(12))), m === 1);
+          const v = m * Math.pow(10, dec);
+          const x = g.posOf(scale, v);
+          if (x > g.axisPx) return out;
+          push(x, String(Number(v.toPrecision(12))), m === 1);
         }
       }
-      // CI runs backwards, so it comes out right to left.
-      out.sort((a, b) => a.x - b.x);
       return out;
     }
 
-    if (scale === 'Ln') {
-      // Ln k sits where D reads e^k, and e^k is 10^(k*log10 e) on a log axis.
-      // So a whole unit of Ln is log10(e) = 0.434 decades wide, NOT log10(e)
-      // inverted or ln(10) decades: using the wrong constant put Ln 1 three
-      // decades along, where the scale reads 5.3.
-      const unit = (1 / Math.LN10) * g.dpx;
-      for (let k = 0; k * unit <= SVG_W; k++) {
-        push(k * unit, String(k), true);
+    if (row.kind === 'projected') {
+      for (let deg = 1; deg <= 90; deg++) {
+        const x = g.posOf(scale, deg);
+        if (x > g.axisPx) break;
+        push(x, String(deg), deg % 10 === 0);
       }
-      for (let k = 0; k * unit <= SVG_W; k++) {
-        for (let f = 1; f < 10; f++) {
-          push((k + f / 10) * unit, '', false);
-        }
-      }
-      out.sort((a, b) => a.x - b.x);
       return out;
     }
 
     return out;
   }
 
-  /** Projected scale graduations, in degrees. */
-  function trigGraduations(g, scale) {
-    const out = [];
-    if (scale === 'ST') return out;
-    for (let deg = 1; deg <= 90; deg++) {
-      const x = g.posOf(scale, deg);
-      if (x > g.axisPx) break;
-      out.push({ x, label: String(deg), major: deg % 10 === 0 });
+  /** Which of geometry's named scales a row's graduations are read from. */
+  function scaleFor(row) {
+    switch (row.kind) {
+      case 'cube': return 'K';
+      case 'square': return 'A';
+      case 'reciprocal': return 'CI';
+      case 'projected': return row.fn === 'tan' ? 'T' : 'S';
+      default: return 'D';
     }
-    return out;
   }
 
-  /**
-   * Draw one scale row. `ticks` are positions; the caller has already decided
-   * which scale and whether it is on the stock or the slide.
-   */
-  function drawScale(parent, row, ticks, opts) {
-    const o = opts || {};
-    const g = el('g', { class: 'scale' + (o.dim ? ' dim' : '') });
-    const colour = o.dark ? 'var(--slide-ink, #cdd4dd)' : 'var(--rule-ink, #20242b)';
+  /* ------------------------------------------------------------- drawing */
+
+  function drawRow(parent, row, ticks, g) {
+    const group = el('g', { id: `row-${row.name}`, class: `row${row.slide ? ' on-slide' : ''}` });
+    const ink = row.slide ? 'var(--slide-ink)' : 'var(--rule-ink)';
 
     for (const tick of ticks) {
-      const h = tick.major ? 13 : 7;
-      g.appendChild(el('line', {
+      const h = tick.major ? row.height * 0.44 : row.height * 0.26;
+      const line = el('line', {
+        id: 'tick',
         x1: tick.x.toFixed(1), x2: tick.x.toFixed(1),
-        y1: row.y, y2: (row.y - h).toFixed(1),
-        stroke: tick.major ? colour : 'currentColor',
-        'stroke-width': tick.major ? 1.1 : 0.6,
-        opacity: tick.major ? 0.95 : 0.5,
-      }));
-      if (tick.label && o.labels !== false) {
+        y1: row.y.toFixed(1), y2: (row.y - h).toFixed(1),
+        stroke: tick.major ? ink : 'currentColor',
+        'stroke-width': tick.major ? 1 : 0.5,
+        opacity: tick.major ? 0.9 : 0.45,
+      });
+      group.appendChild(line);
+
+      if (tick.label) {
         const text = el('text', {
-          x: tick.x.toFixed(1), y: (row.y - h - 3).toFixed(1),
+          x: tick.x.toFixed(1),
+          y: (row.y - h - 2).toFixed(1),
           'text-anchor': 'middle',
-          fill: colour,
-          'font-size': tick.major ? 10 : 8.5,
-          'font-family': 'var(--mono)',
-          opacity: tick.major ? 0.9 : 0.65,
+          fill: row.red ? 'var(--red-ink)' : ink,
+          'font-size': tick.major ? 9 : 7.5,
+          opacity: tick.major ? 0.95 : 0.6,
         });
         text.textContent = tick.label;
-        g.appendChild(text);
+        group.appendChild(text);
       }
     }
 
+    // The scale's name, printed in the margin at the left of the rule the way the
+    // instrument prints it, and marking the row even when it has no graduations
+    // we can vouch for. It sits outside the graduated area so it never lands on
+    // a number the reader is trying to read.
     const name = el('text', {
-      x: (o.dark ? SVG_W + 10 : -10).toFixed(0),
-      y: (row.y + 4).toFixed(0),
-      'text-anchor': o.dark ? 'start' : 'end',
-      fill: colour,
-      'font-size': 11,
-      'font-weight': 700,
-      'font-family': 'var(--mono)',
-      opacity: 0.8,
+      x: -OVERHANG + 6,
+      y: (row.y - 3).toFixed(1),
+      fill: row.red ? 'var(--red-ink)' : ink,
+      'font-size': 10,
+      'font-weight': 600,
+      opacity: 0.9,
     });
     name.textContent = row.label;
-    g.appendChild(name);
-    parent.appendChild(g);
-    return g;
+    group.appendChild(name);
+
+    if (row.unverified) {
+      // A note in the row would sit on top of the scale's own graduations, and
+      // the graduations are the part a reader comes for. It goes in the margin
+      // beside the row's name instead.
+      const note = el('text', {
+        x: 60,
+        y: (row.y - 4).toFixed(1),
+        fill: 'var(--red-ink)',
+        'font-size': 8,
+        opacity: 0.8,
+      });
+      note.textContent = '· graduations not recovered from the photographs';
+      group.appendChild(note);
+    }
+
+    parent.appendChild(group);
+    return group;
+  }
+
+  /** The aluminium end cap, with its fixing screws. */
+  function drawCap(parent, side, axisWidth, ruleHeight) {
+    const group = el('g', { id: `cap-${side}` });
+    const x = side === 'left' ? -OVERHANG : axisWidth;
+    group.appendChild(el('rect', {
+      x, y: 0, width: CAP_W, height: ruleHeight,
+      fill: 'var(--metal)', stroke: 'var(--metal-edge)', 'stroke-width': 1, rx: 3,
+    }));
+    for (const t of [0.22, 0.78]) {
+      group.appendChild(el('circle', {
+        cx: x + CAP_W / 2,
+        cy: (ruleHeight * t).toFixed(1),
+        r: 4.5, fill: 'var(--metal-edge)', opacity: 0.9,
+      }));
+    }
+    parent.appendChild(group);
+    return group;
+  }
+
+  /** The glass cursor: body, metal surround, four screws, centre hairline. */
+  function drawCursor(parent, band, ruleHeight) {
+    const glassW = 132;
+    // The glass straddles the sliding band rather than sitting inside it. In
+    // the photographs it covers the band and a margin above and below, which is
+    // what makes it read as a piece of glass laid over the rule rather than
+    // part of the printing.
+    const margin = (band.bottom - band.top) * 0.35;
+    const top = Math.max(4, band.top - margin);
+    const height = Math.min(ruleHeight - top, band.height + margin * 2);
+
+    const group = el('g', { id: 'cursor' });
+
+    // The glass body, set behind the graduations so the scales read through it.
+    const glass = el('rect', {
+      id: 'cursor-glass',
+      x: -glassW / 2, y: top, width: glassW, height,
+      rx: 7,
+      fill: 'var(--glass)',
+      stroke: 'var(--metal-edge)',
+      'stroke-width': 2.5,
+    });
+    group.appendChild(glass);
+
+    // A highlight down one edge: the photographs show the glass catching light,
+    // and without it the body reads as a hole rather than a transparent plate.
+    group.appendChild(el('rect', {
+      x: -glassW / 2 + 3, y: top + 3, width: 7, height: height - 6,
+      rx: 3, fill: 'var(--glass-shine)', opacity: 0.5,
+    }));
+
+    // Four corner screws, as on the instrument.
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      group.appendChild(el('circle', {
+        id: 'cursor-screw',
+        cx: (dx * (glassW / 2 - 9)).toFixed(1),
+        cy: (top + height / 2 + dy * (height / 2 - 9)).toFixed(1),
+        r: 3.6,
+        fill: 'var(--metal-edge)',
+        stroke: 'var(--metal)',
+        'stroke-width': 1,
+      }));
+    }
+
+    // The hairline, which is the cursor's actual reading edge.
+    group.appendChild(el('line', {
+      id: 'cursor-centre',
+      x1: 0, x2: 0, y1: top - 4, y2: top + height + 4,
+      stroke: 'var(--hairline)', 'stroke-width': 1.2,
+    }));
+
+    parent.appendChild(group);
+    return group;
   }
 
   /**
-   * Build the whole rule into an SVG element.
+   * Draw a face of the rule.
    *
    * @param {SVGSVGElement} svg target, emptied first
-   * @param {{axisPx:number, decades:number}} options
-   * @param {{trigScale?:string}} highlight which scale is in use, for emphasis
+   * @param {{axisPx:number,decades:number}} options the rule's geometry
+   * @param {{face?:string, highlight?:string, minimap?:boolean}} opts
    */
-  function draw(svg, options, highlight) {
-    const hl = highlight || {};
+  function draw(svg, options, opts) {
+    const o = opts || {};
+    const face = o.face || 'front';
+    const rows = rule669.layout(face); // throws on an unknown face
+    const band = rule669.slideBand(face);
+    const ruleHeight = rule669.height(face);
     const g = geometry(options);
 
     svg.innerHTML = '';
-    svg.setAttribute('viewBox', `${-OVERHANG} 0 ${SVG_W + OVERHANG * 2} ${SVG_H}`);
-
-    /* -------------------------------------------------------------- the rule */
-    // Stock: a pale bar behind the stock scales. Drawn first so ticks sit on it.
-    svg.appendChild(el('rect', {
-      x: -OVERHANG, y: 0, width: SVG_W + OVERHANG * 2, height: 216,
-      fill: 'var(--stock)', stroke: 'var(--stock-edge)', 'stroke-width': 1,
-      rx: 4,
-    }));
-    // Slide: a darker bar, offset vertically so both are visible at once. The
-    // overhang to the left is real -- it is where tangent above 45 degrees is
-    // read, and on a physical rule the slide genuinely sticks out there.
-    svg.appendChild(el('rect', {
-      x: -OVERHANG, y: 216, width: SVG_W + OVERHANG * 2, height: SVG_H - 216,
-      fill: 'var(--slide)', stroke: 'var(--slide-edge)', 'stroke-width': 1,
-      rx: 4,
-    }));
+    const total = options.axisPx + OVERHANG * 2;
+    svg.setAttribute('viewBox', `${-OVERHANG} 0 ${total} ${ruleHeight}`);
 
     const stock = el('g', { id: 'stock' });
     const slide = el('g', { id: 'slide' });
     svg.appendChild(stock);
     svg.appendChild(slide);
 
-    /* --------------------------------------------------------- stock scales */
-    for (const row of STOCK_SCALES) {
-      const active = hl.scale === row.name;
-      const g1 = drawScale(stock, row, graduations(g, row.name), { dark: false });
-      g1.classList.toggle('active', active);
-      g1.classList.toggle('dim', !!hl.scale && !active);
-    }
-
-    /* --------------------------------------------------------- slide scales */
-    for (const row of SLIDE_SCALES) {
-      const active = hl.scale === row.name;
-      const g1 = drawScale(slide, row, graduations(g, row.name), { dark: true });
-      g1.classList.toggle('active', active);
-      g1.classList.toggle('dim', !!hl.scale && !active);
-    }
-
-    // The trig row shares space with the slide's own scales, so it is drawn
-    // only when one is actually in use.
-    const trigName = hl.trigScale;
-    const trigRows = trigName
-      ? TRIG_SCALES.map((r) => Object.assign({}, r, { name: trigName, label: trigName }))
-      : [];
-    const overlay = el('g', { id: 'trig' });
-    slide.appendChild(overlay);
-    for (const row of trigRows) {
-      const g1 = drawScale(overlay, row, trigGraduations(g, trigName), { dark: true });
-      g1.classList.add('active');
-    }
-
-    /* -------------------------------------------------------------- the hairline */
-    const cursor = el('g', { id: 'cursor' });
-    cursor.appendChild(el('line', {
-      x1: 0, x2: 0, y1: 6, y2: SVG_H - 6,
-      stroke: 'var(--accent)', 'stroke-width': 1.4,
+    /* The two plates. The stock is one piece above and below the band; the
+       slide is a separate bar. The seam between them is the gap, drawn as a
+       shadowed edge so the eye reads two materials rather than one strip. */
+    stock.appendChild(el('rect', {
+      id: 'stock-plate',
+      x: -OVERHANG, y: 0, width: total, height: band.top,
+      fill: 'var(--stock)', stroke: 'var(--stock-edge)', 'stroke-width': 1,
     }));
-    // A small grip at the top so the cursor reads as a physical thing that
-    // slides along the rule rather than a line drawn on it.
-    cursor.appendChild(el('path', {
-      d: 'M -7 6 L 7 6 L 0 15 Z', fill: 'var(--accent)',
+    stock.appendChild(el('rect', {
+      x: -OVERHANG, y: band.bottom, width: total, height: ruleHeight - band.bottom,
+      fill: 'var(--stock)', stroke: 'var(--stock-edge)', 'stroke-width': 1,
     }));
-    svg.appendChild(cursor);
 
-    return { geometry: g, stock, slide, cursor, trig: overlay };
+    const plate = el('rect', {
+      id: 'slide-plate',
+      x: -OVERHANG, y: band.top, width: total, height: band.height,
+      fill: 'var(--slide)', stroke: 'var(--slide-edge)', 'stroke-width': 1, rx: 2,
+    });
+    slide.appendChild(plate);
+
+    // Shadow along the top edge of the sliding bar, so it reads as sitting above
+    // the stock rather than printed on it.
+    slide.appendChild(el('rect', {
+      x: -OVERHANG, y: band.top, width: total, height: 3,
+      fill: 'var(--slide-shadow)', opacity: 0.55,
+    }));
+
+    /* Rows, each on the piece it is printed on. */
+    for (const row of rows) {
+      drawRow(row.slide ? slide : stock, row, graduations(g, row), g);
+    }
+
+    /* End caps, drawn over the plates so they sit proud of the scales. */
+    drawCap(svg, 'left', options.axisPx, ruleHeight);
+    drawCap(svg, 'right', options.axisPx, ruleHeight);
+
+    const cursor = drawCursor(svg, band, ruleHeight);
+
+    let minimap = null;
+    if (o.minimap) minimap = drawMinimap(svg, band, ruleHeight);
+
+    const parts = { geometry: g, stock, slide, cursor, minimap, band, face };
+    return parts;
   }
 
   /**
-   * Move the slide and the cursor. This is the only function the animation loop
-   * calls per frame, and it writes nothing but two transforms.
+   * The minimap's own marks: where the slide currently is, and what the main
+   * view is showing. Drawn in rule coordinates on a separate strip, so the
+   * renderer needs no idea how wide that strip ends up on screen.
    */
-  function move(parts, slideX, cursorX) {
+  function drawMinimap(parent, band, ruleHeight) {
+    const group = el('g', { id: 'minimap' });
+
+    // A faint bar for the sliding band, so the slide's position has a track to
+    // be read against.
+    group.appendChild(el('rect', {
+      id: 'minimap-track',
+      x: -OVERHANG, y: band.top, width: OVERHANG * 2, height: band.height,
+      fill: 'var(--slide)', opacity: 0.22,
+    }));
+
+    const marker = el('rect', {
+      id: 'minimap-slide',
+      x: -OVERHANG, y: band.top, width: 8, height: band.height,
+      fill: 'var(--slide-edge)', opacity: 0.9,
+    });
+    group.appendChild(marker);
+
+    const viewport = el('rect', {
+      id: 'minimap-viewport',
+      x: 0, y: 0, width: 40, height: ruleHeight,
+      fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, rx: 2,
+    });
+    group.appendChild(viewport);
+
+    parent.appendChild(group);
+    return { group, viewport, marker };
+  }
+
+  /**
+   * Move the slide, the cursor, and the minimap's markers.
+   *
+   * The only function the animation loop calls per frame. It writes transforms
+   * and one width, so nothing here can trigger layout.
+   */
+  function move(parts, slideX, cursorX, minimapWindow) {
     parts.slide.setAttribute('transform', `translate(${slideX.toFixed(2)},0)`);
     parts.cursor.setAttribute('transform', `translate(${cursorX.toFixed(2)},0)`);
+
+    if (parts.minimap) {
+      // The marker sits at the left edge of the sliding bar, so it starts at the
+      // rule's index and travels with the slide exactly as the bar does.
+      parts.minimap.marker.setAttribute('x', (-OVERHANG + slideX).toFixed(2));
+      if (minimapWindow) {
+        parts.minimap.viewport.setAttribute('x', String(minimapWindow.x));
+        parts.minimap.viewport.setAttribute('width', String(minimapWindow.w));
+      }
+    }
   }
 
-  /** Highlight whichever scales the current operation reads. */
-  function setHighlight(parts, scaleNames) {
-    const set = new Set(Array.isArray(scaleNames) ? scaleNames : [scaleNames]);
-    const apply = (parent, name) => {
-      const rows = Array.prototype.slice.call(parent.querySelectorAll('.scale'));
-      const idx = STOCK_SCALES.concat(SLIDE_SCALES).findIndex((r) => r.name === name);
-      rows.forEach((row, i) => {
-        const match = i === idx;
-        row.classList.toggle('active', match);
-        row.classList.toggle('dim', set.size > 0 && !match);
-      });
-    };
-    apply(parts.stock);
-    apply(parts.slide);
-  }
-
-  return { draw, move, setHighlight, graduations, trigGraduations, SVG_W, SVG_H, OVERHANG };
+  return { draw, move, graduations, scaleFor, OVERHANG, CAP_W };
 });
