@@ -18,12 +18,17 @@
   /* The instrument's materials. These are the only surfaces in the page that
      are not flat UI, and they are what make the rule read as a physical object
      rather than a diagram of one. */
+  /* The slide is a second piece of the same material as the stock, not a
+     contrasting one. On the instrument both are the same pale ivory and the
+     seam alone tells them apart; making the slide markedly darker turned the
+     middle of the rule into a black band and hid the graduations printed on
+     it. A shade darker than the stock is enough to read as separate. */
   --stock:#e6e0d0;
   --stock-edge:#b9b1a0;
-  --slide:#2b313a;
-  --slide-edge:#14181e;
-  --slide-shadow:rgba(0,0,0,.45);
-  --slide-ink:#cfd6df;
+  --slide:#d8d1bd;
+  --slide-edge:#9a927e;
+  --slide-shadow:rgba(0,0,0,.22);
+  --slide-ink:#2a2f36;
   --rule-ink:#22262d;
   --red-ink:#a8342c;
   --metal:#b9bcc0;
