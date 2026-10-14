@@ -79,8 +79,10 @@
     if (row.kind === 'unverified') return [];
 
     const out = [];
-    const push = (x, label, major) => {
-      if (Number.isFinite(x) && x >= -OVERHANG && x <= g.axisPx) out.push({ x, label, major });
+    // `grade` is 0 for a labelled graduation, 1 for one between the labels and
+    // 2 for a fine subdivision. Only the labelled ones print a number.
+    const push = (x, label, grade) => {
+      if (Number.isFinite(x) && x >= -OVERHANG && x <= g.axisPx) out.push({ x, label, grade });
     };
 
     const scale = scaleFor(row);
@@ -91,7 +93,11 @@
           const v = m * Math.pow(10, dec);
           const x = g.posOf(scale, v);
           if (x > g.axisPx) return out;
-          push(x, String(Number(v.toPrecision(12))), m === 1);
+          push(x, String(Number(v.toPrecision(12))), m === 1 ? 0 : 1);
+          // The half between two labels. A reader interpolating between 2 and 3
+          // needs a graduation to aim at, and without one the numbers float
+          // free of the scale that carries them.
+          if (m < 9) push(g.posOf(scale, (m + 0.5) * Math.pow(10, dec)), '', 2);
         }
       }
       return thin(out);
@@ -104,7 +110,7 @@
       for (let v = 1; v <= 100; v++) {
         const x = g.posOf(scale, v);
         if (x > g.axisPx) break;
-        push(x, v % 10 === 0 ? String(v) : '', v % 10 === 0);
+        push(x, v % 10 === 0 ? String(v) : '', v % 10 === 0 ? 0 : 2);
       }
       return thin(out);
     }
@@ -115,7 +121,8 @@
           const v = m * Math.pow(10, dec);
           const x = g.posOf(scale, v);
           if (x > g.axisPx) return out;
-          push(x, String(Number(v.toPrecision(12))), m === 1);
+          push(x, String(Number(v.toPrecision(12))), m === 1 ? 0 : 1);
+          if (m < 9) push(g.posOf(scale, (m + 0.5) * Math.pow(10, dec)), '', 2);
         }
       }
       // Not thinned by the decade buckets below: a log-log row IS one decade, so
@@ -127,9 +134,13 @@
       for (let deg = 1; deg <= 90; deg++) {
         const x = g.posOf(scale, deg);
         if (x > g.axisPx) break;
-        push(x, String(deg), deg % 10 === 0);
+        push(x, String(deg), deg % 10 === 0 ? 0 : (deg % 5 === 0 ? 1 : 2));
       }
-      return out;
+      // Thinned on real distances. A trig scale is logarithmic in sin, which
+      // goes flat as the angle approaches 90, so the last twenty degrees crowd
+      // into a few units. Every graduation keeps its tick; only the labels that
+      // cannot fit are dropped, so the scale still shows where each degree is.
+      return thinByDistance(out);
     }
 
     if (row.kind === 'log-log') {
@@ -159,7 +170,16 @@
         const v = below ? 1 - excess : 1 + excess;
         const x = g.posOf(scale, v);
         if (!Number.isFinite(x) || x > g.axisPx) break;
-        push(x, showLogLog(below, v), n === 0);
+        push(x, showLogLog(below, v), 0);
+        // A graduation between each pair, for the same reason the log rows carry
+        // one: these rows exist to resolve differences finer than the numbers
+        // they print, so a scale with only its labels cannot resolve anything.
+        if (n * step < range.max - range.min) {
+          const mid = below
+            ? 1 - (excess + step / 2)
+            : 1 + (excess + step / 2);
+          push(g.posOf(scale, mid), '', 2);
+        }
       }
       // The row's far end, where the next decade begins. Skipped when the loop
       // already printed it: for a row opening at a tenth the last in-decade
@@ -168,12 +188,44 @@
       const endX = g.posOf(scale, end);
       const alreadyDrawn = out.some((t) => Math.abs(t.x - endX) < 0.5);
       if (Number.isFinite(endX) && endX <= g.axisPx && !alreadyDrawn) {
-        push(endX, showLogLog(below, end), true);
+        push(endX, showLogLog(below, end), 0);
       }
-      return thin(out);
+      // Not bucketed by decade the way an ordinary log row is: a log-log row IS
+      // one decade, so the 100px buckets cut it into three arbitrary groups and
+      // dropped 1.04, 1.05 and 1.09 from the middle of it. Thinned on real
+      // distances instead, which is what the crowding actually is.
+      return thinByDistance(out);
     }
 
     return out;
+  }
+
+  /**
+   * Drop labels that would run into their neighbour, judged by real distances.
+   *
+   * Used on rows that are a single decade, where the buckets in `thin` have no
+   * meaning. A log-log row crowds hardest at its high end, where the excess runs
+   * 0.07 to 0.1 and the ten labels pack into the last fifth of the row: left
+   * alone, LL1 printed "1.09" straight through "1.10".
+   *
+   * The first and last labels are kept whatever the crowding. They are the ends
+   * of the decade, the two values that say which one this is, and a scale that
+   * cannot name its own range is not a scale.
+   */
+  function thinByDistance(ticks) {
+    const sorted = [...ticks].sort((a, b) => a.x - b.x);
+    let lastKeptX = -Infinity;
+    for (const [i, tick] of sorted.entries()) {
+      const isEnd = i === 0 || i === sorted.length - 1;
+      if (!tick.label) continue;
+      const need = 6 + tick.label.length * 3.4;
+      if (!isEnd && tick.x - lastKeptX < need) {
+        tick.label = '';
+        continue;
+      }
+      lastKeptX = tick.x;
+    }
+    return ticks;
   }
 
   /**
@@ -209,8 +261,12 @@
       // row's opening value.
       const keep = new Set([0, group.length - 1]);
       for (let i = 1; i < group.length - 1; i++) {
+        // A graduation with nothing printed on it has no label to lose, and its
+        // neighbour is now an unlabelled subdivision rather than the previous
+        // number, so measuring against it would thin labels that fit.
+        if (!group[i].label) continue;
         const gap = group[i].x - group[i - 1].x;
-        const need = 5 + String(group[i].label).length * 3.2;
+        const need = 5 + group[i].label.length * 3.2;
         if (gap >= need) keep.add(i);
       }
       group.forEach((tick, i) => {
@@ -250,19 +306,36 @@
 
   /* ------------------------------------------------------------- drawing */
 
+  /* How each class of graduation is drawn, as a fraction of the row's height.
+     A scale reads at a glance because its labelled graduations outrun the ones
+     between them: the long ticks are the landmarks a reader aims the cursor at,
+     and the short ones only fill in. Drawn as one length, the row is a comb and
+     the eye has nothing to hold on to. */
+  const GRADES = [
+    { len: 0.62, width: 1, opacity: 0.9, font: 9 },   // labelled
+    { len: 0.40, width: 0.7, opacity: 0.7, font: 7.5 }, // between the labels
+    { len: 0.24, width: 0.55, opacity: 0.55, font: 7 }, // fine subdivision
+  ];
+
   function drawRow(parent, row, ticks, g) {
     const group = el('g', { id: `row-${row.name}`, class: `row${row.slide ? ' on-slide' : ''}` });
+    // Both pieces are printed in their own ink, and every graduation uses it.
+    // The minor graduations used to take `currentColor`, which is the page's
+    // near-white text colour: on the ivory rule they were invisible, so eight
+    // of every nine ticks simply did not appear.
     const ink = row.slide ? 'var(--slide-ink)' : 'var(--rule-ink)';
 
     for (const tick of ticks) {
-      const h = tick.major ? row.height * 0.44 : row.height * 0.26;
+      const grade = GRADES[tick.grade];
+      const h = row.height * grade.len;
       const line = el('line', {
         id: 'tick',
+        'data-grade': tick.grade,
         x1: tick.x.toFixed(1), x2: tick.x.toFixed(1),
         y1: row.y.toFixed(1), y2: (row.y - h).toFixed(1),
-        stroke: tick.major ? ink : 'currentColor',
-        'stroke-width': tick.major ? 1 : 0.5,
-        opacity: tick.major ? 0.9 : 0.45,
+        stroke: ink,
+        'stroke-width': grade.width,
+        opacity: grade.opacity,
       });
       group.appendChild(line);
 
@@ -272,8 +345,8 @@
           y: (row.y - h - 2).toFixed(1),
           'text-anchor': 'middle',
           fill: row.red ? 'var(--red-ink)' : ink,
-          'font-size': tick.major ? 9 : 7.5,
-          opacity: tick.major ? 0.95 : 0.6,
+          'font-size': grade.font,
+          opacity: tick.grade === 0 ? 0.95 : 0.7,
         });
         text.textContent = tick.label;
         group.appendChild(text);

@@ -101,6 +101,29 @@ exactly that region. Drawing them as ordinary log scales -- which is what
 happened first -- printed `1 10 100 1000` on a row that reads 1.01 to 1.1, which
 is not a crowded version of the right answer but a different and wrong one.
 
+## Graduations
+
+Every row carries three classes of mark, longest to shortest:
+
+| Class | Carries | Length |
+| --- | --- | --- |
+| labelled | the printed number | 0.62 of the row |
+| middle | a graduation between two labels | 0.40 |
+| fine | the half, between two labels | 0.24 |
+
+The hierarchy is what makes a scale readable: the long ticks are the landmarks a
+reader aims the cursor at, and the short ones fill in between. Drawn at one
+length the row is a comb.
+
+Subdivision beyond the halves is **not derivable from the photographs**. A real
+log-log rule of this family subdivides the first decade far more finely than the
+later ones, tapering so that the tick density stays even along the rule; that is
+the "Deci-Log" idea behind the name. The photographs do not resolve enough minor
+ticks to recover the taper, so the implementation marks every decade equally at
+the halves and does not claim the taper. Every graduation keeps its tick; only
+the printed numbers thin out where they would collide, so the scale still shows
+where each mark is.
+
 ## Not derivable from the photographs
 
 Recorded so the implementation does not quietly invent them:

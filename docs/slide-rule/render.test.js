@@ -20,7 +20,10 @@ function stubNode(name) {
     children: [],
     attrs: {},
     textContent: '',
-    setAttribute(k, v) { this.attrs[k] = v; },
+    // The real DOM stringifies attribute values. The stub did not, which hid a
+    // bug for a while: a test comparing getAttribute('data-grade') to '2' never
+    // matched the number 2 the renderer had set, and silently asserted nothing.
+    setAttribute(k, v) { this.attrs[k] = String(v); },
     getAttribute(k) { return this.attrs[k]; },
     appendChild(c) { this.children.push(c); return c; },
     classList: { toggle() {}, add() {}, contains() { return false; } },
@@ -54,6 +57,138 @@ function texts(node, out = []) {
   for (const child of node.children || []) texts(child, out);
   return out;
 }
+
+/* ----------------------------------------------------------- the graduations */
+
+test('no graduation relies on the inherited CSS colour', () => {
+  // The defect: minor ticks were stroked `currentColor`, which resolves to the
+  // page's near-white text colour. On a pale ivory rule that is invisible, so
+  // eight of every nine graduations simply did not appear. A graduation must
+  // name its own ink, because the rule's surface is the opposite of the page's.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const ticks = byId(svg, 'tick');
+    assert.ok(ticks.length > 100, `there are ticks to check, got ${ticks.length}`);
+    for (const tick of ticks) {
+      assert.notEqual(tick.getAttribute('stroke'), 'currentColor',
+        'a graduation must not inherit the page text colour');
+    }
+  });
+});
+
+test('every graduation has a stroke that names one of the rule inks', () => {
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const inks = new Set(['var(--rule-ink)', 'var(--slide-ink)']);
+    for (const tick of byId(svg, 'tick')) {
+      assert.ok(inks.has(tick.getAttribute('stroke')),
+        `unexpected stroke ${tick.getAttribute('stroke')}`);
+    }
+  });
+});
+
+test('a graduation is visible: it has length, weight and contrast', () => {
+  // A zero-length line, a hairline at 4% opacity, or a colour close to the
+  // stock it is drawn on all amount to the same thing, which is not drawn.
+  // The stock is #e6e0d0; anything within a few percent of that cannot be read.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const stock = [0xe6, 0xe0, 0xd0];
+    for (const tick of byId(svg, 'tick')) {
+      const len = Number(tick.getAttribute('y1')) - Number(tick.getAttribute('y2'));
+      assert.ok(len >= 3, `graduation is ${len} long, too short to see`);
+
+      const width = Number(tick.getAttribute('stroke-width'));
+      assert.ok(width >= 0.4, `graduation is ${width} wide, too thin to see`);
+
+      const opacity = Number(tick.getAttribute('opacity'));
+      assert.ok(opacity >= 0.5, `graduation at ${opacity} opacity is too faint`);
+
+      const stroke = tick.getAttribute('stroke');
+      assert.ok(stroke === 'var(--slide-ink)' || stroke === 'var(--rule-ink)',
+        'a visible graduation is printed in ink, not in the stock colour');
+      // The stock it is printed on is #e6e0d0, so ink of that lightness would be
+      // the same colour as the surface it is meant to mark.
+      const ink = stroke === 'var(--slide-ink)' ? 0x2a : 0x22;
+      assert.ok(ink < stock[0] && ink < stock[1] && ink < stock[2],
+        'the ink must be far darker than the stock it is drawn on');
+    }
+  });
+});
+
+test('a log row carries graduations between its labels, as the instrument does', () => {
+  // One tick per label makes the rule look like a row of numbers. A log scale is
+  // subdivided well past the values it names: the labels are the landmarks, the
+  // graduations are the scale. Each decade takes a middle graduation too, so a
+  // reader can interpolate between two printed numbers.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const row = byId(svg, 'row-L')[0];
+    const ticks = row.children.filter((c) => c.getAttribute('id') === 'tick');
+    // Grades 0 and 1 carry a printed number; grade 2 is the unlabelled
+    // subdivision between them.
+    const labelled = ticks.filter((c) => c.getAttribute('data-grade') !== '2').length;
+    assert.ok(ticks.length > 0, 'L is graduated');
+    assert.ok(labelled > 0, 'L has labelled graduations');
+
+    // Four decades name 36 values; the row must carry substantially more marks
+    // than that, or the numbers float free of a scale.
+    assert.ok(ticks.length >= labelled * 1.5,
+      `L has ${ticks.length} graduations for ${labelled} labels, too sparse`);
+  });
+});
+
+test('no two printed labels on a row run into each other', () => {
+  // The defect this guards: the trig rows crowd dozens of degrees into the last
+  // few units of the rule, because log(sin) goes flat as the angle approaches
+  // 90. Printed unthinned they came out as "8075747371706866656059...", which
+  // is not a readable scale at any zoom.
+  for (const face of ['front', 'back']) {
+    withStubDom(() => {
+      const svg = stubNode('svg');
+      render.draw(svg, RULE, { face });
+      for (const group of byId(svg, 'row-T').concat(byId(svg, 'row-S'))) {
+        const labels = group.children
+          .filter((c) => c.name === 'text' && c.textContent)
+          .map((c) => ({ x: Number(c.getAttribute('x')), s: c.textContent }))
+          .sort((a, b) => a.x - b.x);
+        for (let i = 1; i < labels.length; i++) {
+          const gap = labels[i].x - labels[i - 1].x;
+          assert.ok(gap >= labels[i].s.length * 3.4,
+            `${group.id}: "${labels[i - 1].s}" and "${labels[i].s}" overlap by `
+            + `${(labels[i].s.length * 3.4 - gap).toFixed(1)} units`);
+        }
+      }
+    });
+  }
+});
+
+test('the middle graduation of each decade is shorter than the one it sits between', () => {
+  // The distinction that makes a scale readable at a glance: long ticks carry the
+  // printed numbers, short ticks fill in between. Without it every graduation is
+  // the same and the eye cannot find the landmarks.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const row = byId(svg, 'row-L')[0];
+    const lens = ['0', '1', '2'].map((grade) => row.children
+      .filter((c) => c.getAttribute('id') === 'tick'
+        && c.getAttribute('data-grade') === grade)
+      .map((t) => Number(t.getAttribute('y1')) - Number(t.getAttribute('y2'))));
+
+    for (const [grade, found] of lens.entries()) {
+      assert.ok(found.length > 0, `grade ${grade} exists on L`);
+    }
+    assert.ok(Math.min(...lens[0]) > Math.max(...lens[1]),
+      `labelled (${Math.min(...lens[0])}) must outrun the middles (${Math.max(...lens[1])})`);
+    assert.ok(Math.min(...lens[1]) > Math.max(...lens[2]),
+      `middles (${Math.min(...lens[1])}) must outrun the fine (${Math.max(...lens[2])})`);
+  });
+});
 
 /* -------------------------------------------------------------- the layout */
 
