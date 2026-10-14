@@ -76,6 +76,31 @@ These follow from the one log axis and need no interpretation:
 different partners. Drawing them as separate rows with their own labels is what
 the photographs show, and it is what makes the rule teachable.
 
+## The log-log rows
+
+`LL1`, `LL01`, `LL2`, `LL02` and `LL3` are not logarithmic in their value. Each
+is graduated in the logarithm of the **excess over one** -- `log(v - 1)` above
+one, `log(1 - v)` below.
+
+The construction is confirmed by the arithmetic rather than assumed. `LL1` runs
+1.01 to 1.1, so its excess runs 0.01 to 0.1, which is exactly one decade of
+log10. Every LL row fits the rule for the same reason: its span is the log of
+max excess over min excess, and each of them is one decade.
+
+| Row | Reads | Excess | Labels |
+| --- | --- | --- | --- |
+| `LL01` | below one | 0.01 to 0.1 | `.99 .98 … .90` |
+| `LL1` | above one | 0.01 to 0.1 | `1.01 1.02 … 1.10` |
+| `LL02` | above one | 0.1 to 1 | `1.10 1.20 … 2` |
+| `LL2` | above one | 0.1 to 1 | `1.10 1.20 … 2` |
+| `LL3` | above one | 1 to 10 | `2 3 4 … 11` |
+
+This is what the rows are for. On an ordinary log scale 1.01 sits a single pixel
+from 1 and is unreadable; the log-log rows spend a whole decade resolving
+exactly that region. Drawing them as ordinary log scales -- which is what
+happened first -- printed `1 10 100 1000` on a row that reads 1.01 to 1.1, which
+is not a crowded version of the right answer but a different and wrong one.
+
 ## Not derivable from the photographs
 
 Recorded so the implementation does not quietly invent them:
@@ -84,8 +109,11 @@ Recorded so the implementation does not quietly invent them:
   as stacked pairs at each graduation, for example `78`/`22` and `80`/`20`. The
   pattern is legible but the exact pairing rule is not certain from a
   photograph, so the implementation prints one label per graduation.
-- **`LL01`/`LL02`/`LL03` fine graduations.** The red labels .91 to .98 are
-  readable, but the minor tick spacing between them cannot be recovered.
+- **`LL02`/`LL03` subdivision density.** The construction of the log-log rows is
+  derived (see above), but which round values each prints is a printing
+  decision the photographs settle only loosely. `LL02` is drawn as a copy of
+  `LL2` and `LL03` as a copy of `LL3`, which follows the naming but is not
+  confirmed against the instrument.
 - **`SRT` graduation.** Its scale is visible and labelled 0.6 to 1, but its
   relationship to `S` and `T` is not established here. It is deferred.
 - **`DF`.** The pi marks are clear; the scale's exact rule is not.

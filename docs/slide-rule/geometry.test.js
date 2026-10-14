@@ -14,6 +14,65 @@ const close = (actual, expected, what) =>
   assert.ok(Math.abs(actual - expected) < 1e-9,
     `${what}: expected ${expected}, got ${actual}`);
 
+/* ------------------------------------------------------------- log-log */
+
+test('LL1 measures the excess over one, not the value', () => {
+  const gg = geometry(AXIS);
+  // The defining property, stated as a comparison a reader would make. On an
+  // ordinary log scale 1.01 sits a single pixel from 1, which is exactly why it
+  // is unreadable there; on LL1 it is half a decade along the rule.
+  const onD = gg.posOf('D', 1.01);
+  assert.ok(onD < 2, `D cannot separate 1.01 from 1, only ${onD}px`);
+  close(gg.posOf('LL1', 1.01), 0, 'LL1 puts it at the index');
+  // 1.05 is an excess of 0.05, which is log10(5) = 0.699 decades along a row
+  // that spans one. Not exactly halfway, which is the point of a log scale.
+  close(gg.posOf('LL1', 1.05) / gg.dpx, Math.log10(5), 'LL1 at 1.05, in decades');
+});
+
+test('LL1 spans exactly one decade, from 1.01 to 1.1', () => {
+  const gg = geometry(AXIS);
+  // The arithmetic that makes the row fit the rule precisely: the excess runs
+  // 0.01 to 0.1, one decade, so the whole row occupies one decade of stock.
+  close(gg.posOf('LL1', 1.1) - gg.posOf('LL1', 1.01), gg.dpx,
+    'LL1 spans one decade');
+});
+
+test('LL1 starts at the index, so it aligns with the stock', () => {
+  const gg = geometry(AXIS);
+  close(gg.posOf('LL1', 1.01), 0, 'LL1 begins at the index');
+});
+
+test('equal ratios of excess sit equally far apart', () => {
+  const gg = geometry(AXIS);
+  // 1.01 -> 1.02 and 1.05 -> 1.10 are both doublings of the excess, so they
+  // must be the same distance apart.
+  const a = gg.posOf('LL1', 1.02) - gg.posOf('LL1', 1.01);
+  const b = gg.posOf('LL1', 1.10) - gg.posOf('LL1', 1.05);
+  close(a, b, 'doubling the excess moves the same distance');
+});
+
+test('read inverts posOf on the log-log rows', () => {
+  const gg = geometry(AXIS);
+  for (const v of [1.01, 1.02, 1.05, 1.1]) {
+    close(gg.read('LL1', gg.posOf('LL1', v)), v, `LL1 round trip at ${v}`);
+  }
+});
+
+test('LL01 reads below one, counting down as x increases', () => {
+  const gg = geometry(AXIS);
+  const at = (v) => gg.posOf('LL01', v);
+  assert.ok(at(0.98) < at(0.92),
+    'the larger value sits closer to the index, as a reciprocal row does');
+  close(gg.read('LL01', at(0.95)), 0.95, 'LL01 round trip');
+});
+
+test('a value on the wrong side of one is refused rather than mirrored', () => {
+  const gg = geometry(AXIS);
+  // Asking LL1 for something below one has no meaning: its excess would be
+  // negative. Returning a finite number would silently draw a wrong tick.
+  assert.ok(Number.isNaN(gg.posOf('LL1', 0.95)), 'no tick for a value below one');
+});
+
 test('the rule reports its own dimensions', () => {
   // Callers need these to reason about what fits. Without them a bounds check
   // compares against undefined and rejects everything.

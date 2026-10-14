@@ -228,6 +228,21 @@ test('rows whose graduations could not be read are marked unverified', () => {
   }
 });
 
+test('the log-log rows are graduated, because the construction is known', () => {
+  // A log-log row takes the logarithm of the excess over one. That follows from
+  // the construction rather than being read off a photograph, so these rows can
+  // be graduated for real instead of being left blank. SRT and DF remain the
+  // only rows whose graduations are genuinely unknown.
+  for (const face of ['front', 'back']) {
+    for (const row of rule.layout(face)) {
+      if (/^LL/.test(row.name)) {
+        assert.equal(row.kind, 'log-log', `${row.name} is a log-log row`);
+        assert.notEqual(row.unverified, true, `${row.name} is graduated`);
+      }
+    }
+  }
+});
+
 test('the trig rows record which function they carry', () => {
   const back = rule.layout('back');
   assert.equal(back.find((r) => r.name === 'S').fn, 'sin');
@@ -235,7 +250,9 @@ test('the trig rows record which function they carry', () => {
 });
 
 test('every power scale maps to a graduation rule geometry understands', () => {
-  const known = new Set(['log', 'cube', 'square', 'reciprocal', 'projected', 'unverified']);
+  const known = new Set([
+    'log', 'log-log', 'cube', 'square', 'reciprocal', 'projected', 'unverified',
+  ]);
   for (const face of ['front', 'back']) {
     for (const row of rule.layout(face)) {
       assert.ok(known.has(row.kind), `${row.name} has kind ${row.kind}`);

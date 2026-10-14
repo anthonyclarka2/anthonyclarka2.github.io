@@ -118,7 +118,9 @@
           push(x, String(Number(v.toPrecision(12))), m === 1);
         }
       }
-      return thin(out);
+      // Not thinned by the decade buckets below: a log-log row IS one decade, so
+      // every label on it is already sparse and none needs dropping.
+      return out;
     }
 
     if (row.kind === 'projected') {
@@ -128,6 +130,47 @@
         push(x, String(deg), deg % 10 === 0);
       }
       return out;
+    }
+
+    if (row.kind === 'log-log') {
+      // The row's own single decade, marked at the round excesses. These are the
+      // values a person reads off a log-log row -- 1.01, 1.02 and so on -- and
+      // not the mantissas of an ordinary log scale, which is what drew "1 10
+      // 100 1000" here and made the row unreadable.
+      //
+      // The excesses come from the scale's own range rather than being fixed,
+      // because LL1, LL2 and LL3 each read a different decade of the excess.
+      const range = g.logLogRange(scale);
+      const below = row.name === 'LL01';
+      // How finely the row subdivides depends on the size of its excess: a row
+      // opening at a hundredth marks hundredths, one opening at a tenth marks
+      // tenths. Built from the row's own bound, or every row prints the same
+      // values and LL2 reads as a copy of LL1.
+      // A row opening at 1 has its whole decade in whole numbers, so it marks them
+    // all; a row opening at a hundredth has room for hundredths. Derived from
+    // the row's own bound so each row prints the values it actually carries.
+    const step = range.min < 0.05 ? 0.01 : (range.min < 0.5 ? 0.1 : 1);
+      // Starting at the row's own lower bound, not one step above it: the
+      // opening value is the one a reader reads first, and skipping it left LL1
+      // running 1.02 to 1.10 with nothing at the index.
+      for (let n = 0; n * step < range.max - range.min + 1e-9; n++) {
+        const excess = range.min + n * step;
+        if (excess > range.max) break;
+        const v = below ? 1 - excess : 1 + excess;
+        const x = g.posOf(scale, v);
+        if (!Number.isFinite(x) || x > g.axisPx) break;
+        push(x, showLogLog(below, v), n === 0);
+      }
+      // The row's far end, where the next decade begins. Skipped when the loop
+      // already printed it: for a row opening at a tenth the last in-decade
+      // value IS the far end, and printing both gave "1.7 2 2".
+      const end = below ? 1 - range.max : 1 + range.max;
+      const endX = g.posOf(scale, end);
+      const alreadyDrawn = out.some((t) => Math.abs(t.x - endX) < 0.5);
+      if (Number.isFinite(endX) && endX <= g.axisPx && !alreadyDrawn) {
+        push(endX, showLogLog(below, end), true);
+      }
+      return thin(out);
     }
 
     return out;
@@ -156,24 +199,51 @@
 
     for (const group of byDecade.values()) {
       if (group.length < 2) continue;
-      // How much room the labels have, judged by the tightest pair in the
-      // decade. A four digit label needs far more than a one digit one.
-      for (let i = 1; i < group.length; i++) {
+      // How much room each label has, judged by its gap to the one before. A
+      // four digit label needs far more than a one digit one.
+      //
+      // The first and last labels in a group are never dropped, however tight
+      // they are. On a log-log row they are the two ends of the decade, which
+      // are the values a reader looks for; and the first has no left-hand
+      // neighbour, so measuring it against the gap that follows would drop the
+      // row's opening value.
+      const keep = new Set([0, group.length - 1]);
+      for (let i = 1; i < group.length - 1; i++) {
         const gap = group[i].x - group[i - 1].x;
         const need = 5 + String(group[i].label).length * 3.2;
-        if (gap < need) group[i].label = '';
+        if (gap >= need) keep.add(i);
       }
+      group.forEach((tick, i) => {
+        if (!keep.has(i)) tick.label = '';
+      });
     }
     return ticks;
   }
 
-  /** Which of geometry's named scales a row's graduations are read from. */
+  /**
+ * How a log-log value is printed. A row above one shows two decimals, which is
+ * what makes 1.01 and 1.05 distinguishable at a glance; a row below one drops
+ * the leading zero the way the instrument prints ".95" rather than "0.95".
+ */
+  function showLogLog(below, v) {
+    // A row whose excess reaches whole numbers needs no decimals: LL3 runs to 11
+    // and printing "11.00" implies a precision the row does not carry.
+    const whole = Math.abs(v - Math.round(v)) < 1e-9;
+    const s = whole ? String(Math.round(v)) : v.toFixed(2);
+    if (!below) return s;
+    // Drop the leading zero without substituting a dot for it: replacing /^0/
+    // with "." yields "..99", because the decimal separator is already a dot.
+    return s.charAt(0) === '0' ? s.slice(1) : s;
+  }
+
+/** Which of geometry's named scales a row's graduations are read from. */
   function scaleFor(row) {
     switch (row.kind) {
       case 'cube': return 'K';
       case 'square': return 'A';
       case 'reciprocal': return 'CI';
       case 'projected': return row.fn === 'tan' ? 'T' : 'S';
+    case 'log-log': return row.name;
       default: return 'D';
     }
   }

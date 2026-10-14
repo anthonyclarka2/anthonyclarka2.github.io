@@ -42,7 +42,7 @@
    * trig scale read against its partner.
    */
   const FRONT = [
-    { name: 'LL01', label: 'LL01', kind: 'log', red: true, unverified: true },
+    { name: 'LL01', label: 'LL01', kind: 'log-log', red: true },
     { name: 'L', label: 'L', kind: 'log' },
     { name: 'K', label: 'K', kind: 'cube' },
     { name: 'A', label: 'A', kind: 'square' },
@@ -52,7 +52,7 @@
     { name: 'C', label: 'C', kind: 'log' },
     { name: 'D', label: 'D', kind: 'log' },
     { name: 'DI', label: 'DI', kind: 'reciprocal', red: true },
-    { name: 'LL1', label: 'LL1', kind: 'log', unverified: true },
+    { name: 'LL1', label: 'LL1', kind: 'log-log' },
   ];
 
   /**
@@ -60,16 +60,16 @@
    * app switches faces to do trigonometry at all.
    */
   const BACK = [
-    { name: 'LL02', label: 'LL02', kind: 'log', red: true, unverified: true },
-    { name: 'LL03', label: 'LL03', kind: 'log', red: true, unverified: true },
+    { name: 'LL02', label: 'LL02', kind: 'log-log', red: true },
+    { name: 'LL03', label: 'LL03', kind: 'log-log', red: true },
     { name: 'DF', label: 'DF', kind: 'unverified', unverified: true },
     { name: 'B', label: 'B', kind: 'cube' },
     { name: 'T', label: 'T', kind: 'projected', fn: 'tan', red: true },
     { name: 'SRT', label: 'SRT', kind: 'unverified', unverified: true },
     { name: 'S', label: 'S', kind: 'projected', fn: 'sin', red: true },
     { name: 'D', label: 'D', kind: 'log' },
-    { name: 'LL3', label: 'LL3', kind: 'log', unverified: true },
-    { name: 'LL2', label: 'LL2', kind: 'log', unverified: true },
+    { name: 'LL3', label: 'LL3', kind: 'log-log' },
+    { name: 'LL2', label: 'LL2', kind: 'log-log' },
   ];
 
   /**

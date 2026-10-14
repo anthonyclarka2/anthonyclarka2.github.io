@@ -179,6 +179,62 @@ test('no graduation is drawn past the end of the rule', () => {
   });
 });
 
+test('a log-log row prints its own values, not an ordinary log scale\'s', () => {
+  // The defect this fixes: LL1 was drawn with the ordinary log graduations, so
+  // it read "1 10 100 1000" where it should read 1.01 to 1.1. The numbers were
+  // wrong, not merely crowded.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+
+    const labels = (name) => {
+      const row = byId(svg, `row-${name}`)[0];
+      return row.children.filter((c) => c.name === 'text').map((c) => c.textContent);
+    };
+
+    const ll1 = labels('LL1');
+    assert.ok(ll1.includes('1.01'), `LL1 prints 1.01, got ${ll1.join(' ')}`);
+    assert.ok(ll1.includes('1.10'), `LL1 prints 1.10, got ${ll1.join(' ')}`);
+    assert.ok(!ll1.includes('10'), 'LL1 does not print an ordinary log 10');
+    assert.ok(!ll1.includes('1000'), 'LL1 does not run out to 1000');
+  });
+});
+
+test('every log-log row is graduated, on both faces', () => {
+  // LL02 and LL03 were left out of the geometry table once, which threw while
+  // drawing the whole back face. Drawing the faces is the cheapest test that
+  // catches a row that is declared but not implemented.
+  for (const face of ['front', 'back']) {
+    withStubDom(() => {
+      const svg = stubNode('svg');
+      assert.doesNotThrow(() => render.draw(svg, RULE, { face }),
+        `the ${face} face draws without throwing`);
+    });
+  }
+});
+
+test('the log-log rows each read their own decade of excess', () => {
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'back' });
+    const labelsFor = (name) => {
+      const row = byId(svg, `row-${name}`)[0];
+      return row.children.filter((c) => c.name === 'text').map((c) => c.textContent);
+    };
+
+    // The rows differ by which decade of the excess each opens at. LL1 and
+    // LL01 read hundredths, LL2 and LL02 tenths, LL3 whole numbers.
+    const ll2 = labelsFor('LL2');
+    assert.ok(ll2.includes('1.10'), `LL2 opens at 1.10, got ${ll2.join(' ')}`);
+    assert.ok(!ll2.includes('1.01'), 'LL2 is not a copy of LL1');
+
+    const ll3 = labelsFor('LL3');
+    assert.ok(ll3.includes('2') && ll3.includes('11'),
+      `LL3 reads whole excesses, got ${ll3.join(' ')}`);
+    assert.ok(!ll3.includes('2.10'), 'LL3 is not a copy of LL2');
+  });
+});
+
 test('reciprocal rows graduate onto the overhang, as the instrument does', () => {
   // CI reads 1 at the index and larger values to its left, which is the part of
   // the rule that sticks out beyond the fixed plate. Refusing those would break

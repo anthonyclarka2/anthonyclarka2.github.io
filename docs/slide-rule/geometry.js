@@ -20,9 +20,55 @@
 
   const DEG = 180 / Math.PI;
 
+  /**
+   * Log-log scales: the logarithm of the EXCESS over one, not of the value.
+   *
+   * A rule's ordinary scales all measure log(value), which spends most of its
+   * room on large numbers and crowds everything between 1 and 2 into a sliver.
+   * The LL rows exist to read small differences at full resolution, and they do
+   * it by taking the logarithm of how far the value is from 1.
+   *
+   * The arithmetic is not arbitrary. LL1 runs 1.01 to 1.1, so the excess runs
+   * 0.01 to 0.1, which is exactly one decade of log10 -- the whole row fits the
+   * rule precisely. The 01 variants read the same span below 1, and LL3 runs the
+   * idea out to the large values where a plain log scale is already comfortable.
+   *
+   * `minExcess` is the smallest excess the row prints and is where the row
+   * begins, at the index. A row's span is the log of maxExcess over minExcess,
+   * which for every LL row is exactly one decade.
+   *
+   * `of` says which side of 1 a scale reads, and is named that rather than
+   * `side` because `side` already means which piece of the rule the row is
+   * printed on. LL01 sits below one and LL1 above it.
+   */
+  function logLogPos(def, v, dpx) {
+    const excess = def.of === 'below' ? 1 - v : v - 1;
+    if (excess <= 0) return NaN;
+    // Anchored on the row's SMALLER excess so the row starts at the index. The
+    // anchor is the lower bound, not the upper: using maxExcess put LL1 at
+    // x = -750 and the whole row off the left of the rule.
+    return (Math.log10(excess) - Math.log10(def.minExcess)) * dpx;
+  }
+
+  function logLogValue(def, x, dpx) {
+    const excess = Math.pow(10, x / dpx + Math.log10(def.minExcess));
+    return def.of === 'below' ? 1 - excess : 1 + excess;
+  }
+
   const SCALES = {
     C: { side: 'slide', kind: 'log' },
     D: { side: 'stock', kind: 'log' },
+
+    // Log-log rows. Each spans exactly one decade of EXCESS over one, which is
+    // why they fit the rule so precisely: LL1's 1.01 to 1.1 is an excess of
+    // 0.01 to 0.1, one decade. maxExcess is the largest excess the row prints,
+    // and its logarithm is where the row starts.
+    LL1: { side: 'stock', kind: 'log-log', of: 'above', minExcess: 0.01, maxExcess: 0.1 },
+    LL01: { side: 'slide', kind: 'log-log', of: 'below', minExcess: 0.01, maxExcess: 0.1 },
+    LL2: { side: 'stock', kind: 'log-log', of: 'above', minExcess: 0.1, maxExcess: 1 },
+    LL3: { side: 'stock', kind: 'log-log', of: 'above', minExcess: 1, maxExcess: 10 },
+    LL02: { side: 'slide', kind: 'log-log', of: 'above', minExcess: 0.1, maxExcess: 1 },
+    LL03: { side: 'slide', kind: 'log-log', of: 'above', minExcess: 1, maxExcess: 10 },
 
     // Power scales graduate so that reading `x` on the scale means the D scale
     // underneath is showing x^power. A and C| square (2); B and K cube (3).
@@ -78,6 +124,8 @@
           // the position is -log10(value). That is what makes these scales run
           // backwards and what places S's 90 and T's 45 on their indices.
           return -Math.log10(def.fn(v * Math.PI / 180)) * dpx;
+        case 'log-log':
+          return logLogPos(def, v, dpx);
         default:
           return Math.log10(v) * dpx;
       }
@@ -111,6 +159,8 @@
           if (v <= 0 || v > def.maxValue) return NaN;
           return def.inverse(v) * DEG;
         }
+        case 'log-log':
+          return logLogValue(def, local, dpx);
         default:
           return base;
       }
@@ -123,6 +173,13 @@
     return {
       posOf,
       read,
+      // The excess bounds of a log-log row, so the renderer can graduate it
+      // from the scale's own range instead of assuming LL1's.
+      logLogRange: (scale) => {
+        const def = SCALES[scale];
+        if (!def || def.kind !== 'log-log') throw new Error(`not a log-log scale: ${scale}`);
+        return { min: def.minExcess, max: def.maxExcess, of: def.of };
+      },
       axisPx: options.axisPx,
       decades: options.decades,
       dpx,
