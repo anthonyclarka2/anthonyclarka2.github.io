@@ -15,6 +15,7 @@
 - Always save file changes to disk and keep them in the working tree; never discard or revert changes unless the user explicitly requests it.
 - If a bug is discovered, fix the root cause rather than layering on unrelated patches.
 - When a feature is complete, commit the local changes to git unless the user explicitly says not to.
+- End every commit message with exactly this trailer on its own line, preceded by a blank line: `Co-Authored-By: OpenCode v2 <5565189+anthonyclarka2@users.noreply.github.com>`. The numeric GitHub noreply form is what makes GitHub link the co-author to the account; the bare `username@` form does not resolve reliably. Never substitute a different model or agent identity in this trailer.
 - If build or type checks fail for unrelated pre-existing issues, call that out clearly instead of claiming overall project success.
 - Always create comments for objects, functions, etc, that explain the "why" not just the "how" of the item being documented.
 
