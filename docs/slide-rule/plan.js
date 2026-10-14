@@ -514,7 +514,10 @@
 
   /**
    * Sine, cosine and tangent, read off the projected S and T scales against CI.
-   * Note the sine is NOT read off D: at an S graduation D shows cosecant.
+   *
+   * The sine is taken off CI rather than off D because at an S graduation D
+   * shows the cosecant. The K&E 669 carries CI on the slide for exactly this
+   * purpose, as a Deci-Log does, so the reading is the same on both rules.
    */
   function planTrig(g, name, degrees) {
     const scale = name === 'tan' ? 'T' : 'S';
