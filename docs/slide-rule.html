@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  Content-Security-Policy (defence in depth).
+
+  This page is no longer a single self-contained document: geometry, parser,
+  planner, tween and renderer are separate modules under docs/slide-rule/, so
+  script-src and style-src gain 'self' alongside 'unsafe-inline'. Everything
+  else stays denied: no network, no plugins, no framing, no form posts. The rule
+  is inline SVG, so img-src can remain 'none' -- there are no raster assets.
+
+  Note that frame-ancestors is ignored in a meta tag; send that one as an HTTP
+  header if you host this on a web server.
+-->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'none'; connect-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Slide Rule</title>
+<link rel="stylesheet" href="slide-rule/slide-rule.css">
+</head>
+<body>
+<header>
+  <h1>Slide rule <span class="thin">&mdash; a mechanical calculator, animated</span></h1>
+  <p class="sub">
+    Type a calculation and watch a real slide rule perform it, one move at a time.
+    Everything the rule can do, it does by counting distances along a logarithmic
+    scale. Everything it cannot do, it says so.
+  </p>
+</header>
+
+<div class="grid">
+  <section class="panel sticky">
+    <h2>Calculation</h2>
+    <label class="lab" for="expr"><span>Expression</span><span class="hint" id="parse-note"></span></label>
+    <input type="text" id="expr" value="2.5 * 3.7" spellcheck="false" autocomplete="off"
+           aria-describedby="err">
+    <div id="err" class="err" role="alert" hidden></div>
+
+    <div class="chips" id="chips"></div>
+
+    <div class="big" id="result-card">
+      <div class="k"><span id="result-label">Result</span><span class="tag" id="result-tag"></span></div>
+      <div class="val" id="result-val">&mdash;</div>
+      <div class="subv" id="result-sub"></div>
+    </div>
+
+    <div id="limits"></div>
+    <div id="notes"></div>
+  </section>
+
+  <section>
+    <div class="panel" id="rule-panel">
+      <h2>The rule</h2>
+      <svg id="rule" viewBox="-160 0 1400 430" role="img"
+           aria-labelledby="rule-title rule-desc">
+        <title id="rule-title">A ten inch Deci-Log slide rule</title>
+        <desc id="rule-desc">The fixed stock carries the D, A, CI and Ln scales.
+        The sliding rule carries C, B, C|, K, S, T and ST. A hairline cursor
+        reads across both.</desc>
+      </svg>
+      <div class="transport">
+        <button type="button" id="play" class="btn">Play</button>
+        <button type="button" id="step-back" class="btn" aria-label="Previous step">&#9664;</button>
+        <button type="button" id="step-fwd" class="btn" aria-label="Next step">&#9654;</button>
+        <button type="button" id="replay" class="btn">Replay</button>
+        <input type="range" id="scrub" min="0" max="1000" value="0" step="1"
+               aria-label="Scrub through the animation">
+        <span class="stepno" id="stepno">&mdash;</span>
+      </div>
+    </div>
+
+    <div class="panel" id="working">
+      <h2>Working</h2>
+      <ol class="log" id="log"></ol>
+    </div>
+
+    <div class="panel" id="about">
+      <h2>Why this instrument is interesting</h2>
+      <p>
+        A slide rule has no gears, no digits and no memory. It is two sticks of
+        wood with numbers printed on them, and it multiplies because the distance
+        from 1 to 2 is the same on every logarithmic scale, so setting one stick's
+        1 against a number and reading another number against the stock adds
+        their logarithms &mdash; which is what multiplication is.
+      </p>
+      <p>
+        That single idea buys multiplication, division, squares, roots, cubes,
+        common logarithms, sines and tangents. It buys none of addition, because
+        there is no scale that adds a distance to another.
+      </p>
+      <p>
+        Sines are read from the <strong>CI</strong> scale rather than D, which
+        surprises most people: under a graduation on S, the D scale shows the
+        cosecant, not the sine. There is no cosine scale either &mdash;
+        cos&nbsp;60&deg; is read as sin&nbsp;30&deg;, the sine of the complement.
+      </p>
+      <p class="caveat">
+        The four decade scale is short. Operands more than four decades from the
+        index have to be shifted, and the narration says when that happens.
+        Tangent above 45&deg; falls off the left of the index onto the part of the
+        slide that overhangs the stock, exactly as on a physical rule.
+      </p>
+    </div>
+  </section>
+</div>
+
+<script src="slide-rule/geometry.js"></script>
+<script src="slide-rule/parser.js"></script>
+<script src="slide-rule/plan.js"></script>
+<script src="slide-rule/tween.js"></script>
+<script src="slide-rule/render.js"></script>
+<script src="slide-rule/app.js"></script>
+</body>
+</html>
