@@ -124,14 +124,40 @@ the halves and does not claim the taper. Every graduation keeps its tick; only
 the printed numbers thin out where they would collide, so the scale still shows
 where each mark is.
 
+## What the photographs settle
+
+Read off the high-resolution images rather than inferred:
+
+- **Where each scale starts.** Every scale begins at the same vertical line: the
+  `1` of `L`, `K`, `A`, `C` and `D` all align, and the reciprocal rows begin
+  there too. There is no margin to the left of the index.
+- **Legend placement.** Each row's name is printed to the left of that line,
+  clearing the first graduation by two to three characters.
+- **Colour.** Front: `LL01`, `CIF`, `CI`, `DI` red; `L`, `K`, `A`, `CF`, `C`,
+  `D`, `LL1` black. Back: `LL02`, `LL03`, `T`, `S` red; `DF`, `B`, `SRT`, `D`,
+  `LL3`, `LL2` black. The legends are printed in their row's colour.
+- **Reciprocal rows.** `CI` and `DI` are printed `9 8 7 6 5 4 3 2 1` and then
+  `9 8 7 6 5 4 3 2 1` again, each group one decade further along — the
+  mantissa, with the `1` marking the decade. They run `9` to `1` and then `0.9`
+  to `0.01` and so on across the whole rule.
+- **`S` and `T` carry stacked pairs.** `79/11`, `78/12`, `75/25`, `65/25`,
+  `50/40`: the second figure is the complement to ninety, so each graduation
+  prints the angle and its complement. On `S` that is sine against its
+  cosecant; on `T`, tangent against its cotangent.
+
 ## Not derivable from the photographs
 
 Recorded so the implementation does not quietly invent them:
 
-- **Paired red labels on `S` and `T`.** The back face prints sin/cot and tan/cot
-  as stacked pairs at each graduation, for example `78`/`22` and `80`/`20`. The
-  pattern is legible but the exact pairing rule is not certain from a
-  photograph, so the implementation prints one label per graduation.
+- **Which degrees carry a pair on `S` and `T`.** That each graduation prints the
+  angle and its complement is clear. Which of the ninety are printed as pairs and
+  which carry a single figure is legible only in part, and guessing the set would
+  put numbers on the rule that are not there. Not yet implemented.
+- **The end-of-row captions.** Every row carries a multiplier range at its right
+  end — `-.001 to -.01`, `0.01 to 10`, `10 to 100`, `-.01 to -.1`, `0.001 to
+  01`, `01 to 1.0`. These are readable but not transcribed exactly, and a
+  caption that states the wrong multiplier is worse than none. Not yet
+  implemented.
 - **`LL02`/`LL03` subdivision density.** The construction of the log-log rows is
   derived (see above), but which round values each prints is a printing
   decision the photographs settle only loosely. `LL02` is drawn as a copy of

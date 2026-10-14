@@ -190,6 +190,94 @@ test('the middle graduation of each decade is shorter than the one it sits betwe
   });
 });
 
+test('the graduated area begins at the index, as the photographs show', () => {
+  // Every scale on the instrument starts at the same vertical line: the 1 of L,
+  // K, A, C and D all align, and the reciprocal rows' 9s begin there too. The
+  // implementation carried a 160 unit margin to the left of the index and no row
+  // ever used it, because a reciprocal graduation sits at -log10(v), which for
+  // every value under 1 is positive. That empty margin is what pushed the row
+  // legends away from their scales.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const ticks = byId(svg, 'tick');
+    assert.ok(ticks.length > 100, 'there are graduations to check');
+    for (const tick of ticks) {
+      assert.ok(Number(tick.getAttribute('x1')) >= -0.01,
+        `a graduation sits left of the index at x=${tick.getAttribute('x1')}`);
+    }
+  });
+});
+
+test('a row legend sits two to three character widths left of its scale', () => {
+  // Measured on the photographs: the legend's right edge clears the start of
+  // the scale by a couple of characters, not by the width of the rule. At the
+  // size the legends are printed, one character is about 5.5 units.
+  const charW = 5.5;
+  withStubDom(() => {
+    for (const face of ['front', 'back']) {
+      const svg = stubNode('svg');
+      render.draw(svg, RULE, { face });
+      for (const row of rule669.layout(face)) {
+        const group = byId(svg, `row-${row.name}`)[0];
+        const name = group.children.find((c) => c.name === 'text'
+          && c.textContent === row.label);
+        assert.ok(name, `${row.name} prints its legend`);
+        // Anchored at its right edge, so the gap to the scale is the x position.
+        assert.equal(name.getAttribute('text-anchor'), 'end',
+          `${row.name} legend is anchored by its right edge`);
+        const gap = -Number(name.getAttribute('x'));
+        assert.ok(gap >= 2 * charW && gap <= 3 * charW,
+          `${row.name} legend clears the scale by ${gap.toFixed(1)} units, `
+          + `which is not two to three characters`);
+      }
+    }
+  });
+});
+
+test('every legend is still inside the rule, with room for its own text', () => {
+  // Pulling the legend in to two characters must not push its left half off the
+  // end of the stock. LL01 is the widest name on either face.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const name = byId(svg, 'row-LL01')[0].children
+      .find((c) => c.name === 'text' && c.textContent === 'LL01');
+    const gap = -Number(name.getAttribute('x'));
+    const width = 'LL01'.length * 6;
+    assert.ok(gap + width <= render.OVERHANG + 0.01,
+      `LL01 needs ${gap + width} units of margin but the stock gives `
+      + `${render.OVERHANG}`);
+  });
+});
+
+test('a legend is drawn in its row colour, as the instrument prints it', () => {
+  // The photographs colour the legends to match their row: LL01, CIF, CI and DI
+  // are printed in red on the front face, as are LL02, LL03, T and S on the back.
+  const red = new Set(['LL01', 'CIF', 'CI', 'DI']);
+  const redBack = new Set(['LL02', 'LL03', 'T', 'S']);
+  withStubDom(() => {
+    for (const [face, reds] of [['front', red], ['back', redBack]]) {
+      const svg = stubNode('svg');
+      render.draw(svg, RULE, { face });
+      for (const row of rule669.layout(face)) {
+        const name = byId(svg, `row-${row.name}`)[0].children
+          .find((c) => c.name === 'text' && c.textContent === row.label);
+        const fill = name.getAttribute('fill');
+        // Red rows are printed in red; everything else in the dark ink of
+        // whichever piece of the rule it is printed on.
+        const dark = ['var(--rule-ink)', 'var(--slide-ink)'];
+        if (reds.has(row.name)) {
+          assert.equal(fill, 'var(--red-ink)', `${row.name} legend on the ${face} face`);
+        } else {
+          assert.ok(dark.includes(fill),
+            `${row.name} legend on the ${face} face is ${fill}, not red`);
+        }
+      }
+    }
+  });
+});
+
 /* -------------------------------------------------------------- the layout */
 
 test('the rule is drawn as two pieces with a seam between them', () => {
@@ -303,13 +391,16 @@ test('no graduation is drawn past the end of the rule', () => {
     })(svg);
     assert.ok(ticks.length > 100, `a real number of ticks, got ${ticks.length}`);
     for (const tick of ticks) {
-      // A tick is a vertical line, so its position is x1, not x. Reciprocal
-      // scales run backwards, so their graduations legitimately sit at negative
-      // x on the overhang where the slide protrudes past the fixed plate.
+      // A tick is a vertical line, so its position is x1, not x. The graduated
+      // area runs from the index to the end of the rule; the margin to its left
+      // belongs to the legends. This used to allow a 160 unit overhang, on the
+      // theory that reciprocal scales run back past the index -- but they do not:
+      // a reciprocal graduation sits at -log10(v), which is positive for every
+      // value below 1, so nothing was ever drawn out there.
       const x = Number(tick.attrs.x1);
       assert.ok(Number.isFinite(x), `tick has a position, got ${tick.attrs.x1}`);
-      assert.ok(x >= -render.OVERHANG - 1 && x <= RULE.axisPx + 1,
-        `tick at ${x} is outside the rule and its overhang`);
+      assert.ok(x >= -0.01 && x <= RULE.axisPx + 1,
+        `tick at ${x} is outside the graduated area`);
     }
   });
 });
@@ -370,20 +461,54 @@ test('the log-log rows each read their own decade of excess', () => {
   });
 });
 
-test('reciprocal rows graduate onto the overhang, as the instrument does', () => {
-  // CI reads 1 at the index and larger values to its left, which is the part of
-  // the rule that sticks out beyond the fixed plate. Refusing those would break
-  // the reciprocals the whole rule is built around.
+test('reciprocal rows graduate on the reciprocals, as the instrument prints them', () => {
+  // CI reads 9 8 7 6 5 4 3 2 1 and then 9 8 7 ... again, each group a decade
+  // further along, running across the rule. It used to be graduated on 1..10000
+  // and placed at -log10(v), which threw everything above 1 off the left of the
+  // index and left the row showing "1 2 3 4" jammed against the margin.
   withStubDom(() => {
     const svg = stubNode('svg');
     render.draw(svg, RULE, { face: 'front' });
-    const ci = byId(svg, 'row-CI')[0];
-    const xs = ci.children
+    for (const name of ['CI', 'DI']) {
+      const row = byId(svg, `row-${name}`)[0];
+      const labels = row.children
+        .filter((c) => c.name === 'text' && c.textContent !== name)
+        .map((c) => c.textContent);
+      assert.deepEqual(labels.slice(0, 9), ['9', '8', '7', '6', '5', '4', '3', '2', '1'],
+        `${name} runs backwards from its 9`);
+      assert.ok(labels.length >= 18, `${name} carries two decades, got ${labels.length}`);
+
+      const xs = row.children
+        .filter((c) => c.name === 'line' && c.attrs.id === 'tick')
+        .map((c) => Number(c.attrs.x1));
+      assert.ok(Math.min(...xs) >= 0, `${name} does not run off the left edge`);
+      assert.ok(Math.max(...xs) > RULE.axisPx * 0.9,
+        `${name} runs the length of the rule`);
+    }
+  });
+});
+
+test('a reciprocal graduation reads back its own value', () => {
+  // The position of a value on a reciprocal row must agree with the value the
+  // row is supposed to be showing there, or the row is decorative.
+  const g = geometry(RULE);
+  for (const v of [0.9, 0.5, 0.25, 0.1]) {
+    const back = g.read('CI', g.posOf('CI', v));
+    assert.ok(Math.abs(back - v) < 1e-9, `CI round trip at ${v}: got ${back}`);
+  }
+});
+
+test('DI is graduated on the same axis as CI', () => {
+  // DI is the stock's reciprocal row and CI the slide's. They are the same
+  // graduations, which is why a reciprocal can be read directly off D against
+  // the one on the slide.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const xs = (name) => byId(svg, `row-${name}`)[0].children
       .filter((c) => c.name === 'line' && c.attrs.id === 'tick')
       .map((c) => Number(c.attrs.x1));
-    assert.ok(xs.length > 0, 'CI has graduations');
-    assert.ok(Math.min(...xs) < 0, 'CI reaches left of the index');
-    assert.ok(Math.max(...xs) <= 1, 'CI runs backwards from its 1');
+    assert.deepEqual(xs('DI'), xs('CI'), 'DI and CI share one set of graduations');
   });
 });
 

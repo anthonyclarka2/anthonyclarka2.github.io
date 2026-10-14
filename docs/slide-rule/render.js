@@ -30,10 +30,23 @@
   const { geometry } = geometryLib;
   const NS = 'http://www.w3.org/2000/svg';
 
-  /* How far the slide protrudes left of the stock. Tangent above 45 degrees
-     falls off the left of the index, and on the instrument that is the part of
-     the slide sticking out beyond the fixed plate. */
-  const OVERHANG = 160;
+  /* The margin to the left of the index, and the only place a scale's name is
+     printed.
+
+     This used to be 160 units of unused stock. It was justified as the slide's
+     overhang -- tangent above 45 degrees falls off the left of the index -- but
+     no row ever used it: a reciprocal graduation sits at -log10(v), which for
+     every value below 1 is positive, so CI and DI both begin at or right of the
+     index and nothing is ever printed out there. On the photographs every scale
+     starts at the same vertical line and the legends sit just to its left.
+
+     So it is now sized for the legends and nothing else. */
+  const OVERHANG = 40;
+
+  /* How far a legend's right edge clears the start of its scale, measured off
+     the photographs at two to three characters. At the size the legends are
+     printed one character is about 5.5 units. */
+  const LEGEND_GAP = 2.5 * 5.5;
 
   /* The end caps the photographs show at both ends of the rule, and the clear
      space between the last graduation and the cap. Without the gap the cap sits
@@ -82,7 +95,11 @@
     // `grade` is 0 for a labelled graduation, 1 for one between the labels and
     // 2 for a fine subdivision. Only the labelled ones print a number.
     const push = (x, label, grade) => {
-      if (Number.isFinite(x) && x >= -OVERHANG && x <= g.axisPx) out.push({ x, label, grade });
+      // Graduations are clipped to the graduated area, which begins at the index
+      // and not before it. A reciprocal scale runs from about -log10(v), so
+      // every value under 1 lands at or right of the index and nothing reaches
+      // into the margin; the margin belongs to the legends alone.
+      if (Number.isFinite(x) && x >= 0 && x <= g.axisPx) out.push({ x, label, grade });
     };
 
     const scale = scaleFor(row);
@@ -115,7 +132,7 @@
       return thin(out);
     }
 
-    if (row.kind === 'cube' || row.kind === 'reciprocal') {
+    if (row.kind === 'cube') {
       for (let dec = 0; dec < g.decades; dec++) {
         for (let m = 1; m < 10; m++) {
           const v = m * Math.pow(10, dec);
@@ -125,8 +142,31 @@
           if (m < 9) push(g.posOf(scale, (m + 0.5) * Math.pow(10, dec)), '', 2);
         }
       }
-      // Not thinned by the decade buckets below: a log-log row IS one decade, so
-      // every label on it is already sparse and none needs dropping.
+      return out;
+    }
+
+    if (row.kind === 'reciprocal') {
+      // A reciprocal row is graduated on the reciprocals THEMSELVES, not on the
+      // values whose reciprocals they are. Walking 1, 2, 3 and placing each at
+      // -log10(v) throws every value above 1 off the left of the index and
+      // leaves CI and DI showing "1 2 3 4" jammed against the margin, which is
+      // what it used to do.
+      //
+      // What the instrument prints is 9 8 7 6 5 4 3 2 1 and then 9 8 7 ... again,
+      // each group one decade further along: the mantissa, with the 1 marking
+      // the decade. So CI runs 0.9 to 0.001 as x increases, across the rule.
+      for (let dec = 0; dec < g.decades; dec++) {
+        for (let m = 9; m >= 1; m--) {
+          const v = m / Math.pow(10, dec + 1);
+          const x = g.posOf(scale, v);
+          if (x > g.axisPx) return out;
+          push(x, String(m), m === 1 ? 0 : 1);
+          if (m > 1) {
+            const mid = (m - 0.5) / Math.pow(10, dec + 1);
+            push(g.posOf(scale, mid), '', 2);
+          }
+        }
+      }
       return out;
     }
 
@@ -299,7 +339,7 @@
       case 'square': return 'A';
       case 'reciprocal': return 'CI';
       case 'projected': return row.fn === 'tan' ? 'T' : 'S';
-    case 'log-log': return row.name;
+      case 'log-log': return row.name;
       default: return 'D';
     }
   }
@@ -353,13 +393,15 @@
       }
     }
 
-    // The scale's name, printed in the margin at the left of the rule the way the
+    // The scale's name, printed to the left of the graduated area the way the
     // instrument prints it, and marking the row even when it has no graduations
-    // we can vouch for. It sits outside the graduated area so it never lands on
-    // a number the reader is trying to read.
+    // we can vouch for. Anchored by its right edge so the gap to the first
+    // graduation is the same on every row however long the name is -- which is
+    // what makes the legends read as a column down the left of the rule.
     const name = el('text', {
-      x: -OVERHANG + 6,
+      x: -LEGEND_GAP,
       y: (row.y - 3).toFixed(1),
+      'text-anchor': 'end',
       fill: row.red ? 'var(--red-ink)' : ink,
       'font-size': 10,
       'font-weight': 600,
@@ -369,12 +411,12 @@
     group.appendChild(name);
 
     if (row.unverified) {
-      // Drawn in the left margin, beyond the scale's name, so it cannot land on
-      // a graduation. The first decade starts at the index, which is at the far
-      // left of the graduated area, so the margin is the only free space.
+      // The margin is now only wide enough for the legend, so this note has
+      // nowhere to sit beside it. It goes under the row's own graduations
+      // instead, where the instrument's rows carry no further printing anyway.
       const note = el('text', {
-        x: -OVERHANG + 46,
-        y: (row.y - 3).toFixed(1),
+        x: 0,
+        y: (row.y + 9).toFixed(1),
         fill: 'var(--red-ink)',
         'font-size': 7,
         opacity: 0.75,
