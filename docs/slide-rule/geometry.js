@@ -116,7 +116,17 @@
       }
     }
 
-    return { posOf, read };
+    // The rule's dimensions are part of the interface, not just an input.
+    // Callers have to reason about what fits on the rule -- a cursor that
+    // cannot reach past the right edge, an operand four decades too small --
+    // and they cannot do that without being told how long the rule is.
+    return {
+      posOf,
+      read,
+      axisPx: options.axisPx,
+      decades: options.decades,
+      dpx,
+    };
   }
 
   return { geometry, DEG };

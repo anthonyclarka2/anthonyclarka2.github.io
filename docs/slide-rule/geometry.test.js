@@ -14,6 +14,15 @@ const close = (actual, expected, what) =>
   assert.ok(Math.abs(actual - expected) < 1e-9,
     `${what}: expected ${expected}, got ${actual}`);
 
+test('the rule reports its own dimensions', () => {
+  // Callers need these to reason about what fits. Without them a bounds check
+  // compares against undefined and rejects everything.
+  const g = geometry(AXIS);
+  assert.equal(g.axisPx, 1000);
+  assert.equal(g.decades, 4);
+  assert.equal(g.dpx, 250);
+});
+
 test('a decade occupies exactly a quarter of a four decade rule', () => {
   const g = geometry(AXIS);
   close(g.posOf('D', 1), 0, 'D at 1');

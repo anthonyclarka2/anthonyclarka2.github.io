@@ -164,7 +164,15 @@
       return this.parseExponent();
     }
 
-    /** exponent := primary ('^' unary)?   right associative */
+    /**
+     * exponent := primary ('^' unary)?   right associative
+     *
+     * The exponent is parsed with parseUnary, not parseExponent, so that
+     * `2 ^ -2` is a negative exponent rather than a syntax error. Right
+     * associativity still holds because a unary sign only ever consumes the
+     * single value in front of it: in `2 ^ -2 ^ 2` the inner -2 stops at the
+     * next caret and parseExponent sees that caret to continue rightwards.
+     */
     parseExponent() {
       const base = this.parsePrimary();
       this.skipSpace();
@@ -172,17 +180,32 @@
         this.pos += 2;
         return {
           kind: 'binary', operator: '^', left: base,
-          right: this.parseExponent(), rightAssoc: true,
+          right: this.parseSigned(), rightAssoc: true,
         };
       }
       if (this.peek() === '^') {
         this.pos++;
         return {
           kind: 'binary', operator: '^', left: base,
-          right: this.parseExponent(), rightAssoc: true,
+          right: this.parseSigned(), rightAssoc: true,
         };
       }
       return base;
+    }
+
+    /** A primary, optionally preceded by a sign. */
+    parseSigned() {
+      this.skipSpace();
+      const ch = this.peek();
+      if (ch === '-') {
+        this.pos++;
+        return { kind: 'unary', operator: '-', argument: this.parseExponent() };
+      }
+      if (ch === '+') {
+        this.pos++;
+        return this.parseExponent();
+      }
+      return this.parseExponent();
     }
 
     parsePrimary() {

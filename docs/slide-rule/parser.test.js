@@ -59,6 +59,29 @@ test('unary minus is a sign, not an exponent, so -3^2 is negative nine', () => {
   close(run('3 * -2'), -6, '3 * -2');
 });
 
+test('a negative exponent is a value, not a syntax error', () => {
+  close(run('2 ^ -2'), 0.25, '2 ^ -2');
+  close(run('2 ^ -1'), 0.5, '2 ^ -1');
+  close(run('3 ^ -3'), 1 / 27, '3 ^ -3');
+  close(run('2 ** -3'), 0.125, '2 ** -3');
+});
+
+test('a negative exponent still associates to the right', () => {
+  // The sign binds only to the value right after its caret, so the next caret
+  // continues rightwards. 2 ^ -3 ^ 2 is 2 ^ -(3 ^ 2) = 2 ^ -9.
+  close(run('2 ^ -3 ^ 2'), 0.001953125, '2 ^ -3 ^ 2');
+  // And a trailing sign attaches to the last term alone: 2 ^ 3 ^ -1 is
+  // 2 ^ (3 ^ -1) = 2^(1/3), not 2 ^ (3 ^ -1) read left to right.
+  close(run('2 ^ 3 ^ -1'), Math.cbrt(2), '2 ^ 3 ^ -1');
+});
+
+test('a negative base raised to an odd power stays negative', () => {
+  close(run('-2 ^ 3'), -8, '-2 ^ 3');
+  close(run('(-2) ^ 3'), -8, '(-2) ^ 3');
+  // Consistent with -3 ^ 2 being -9: the sign sits outside the power here too.
+  close(run('-2 ^ 2'), -4, '-2 ^ 2');
+});
+
 test('division and subtraction associate left to right', () => {
   close(run('100 / 10 / 2'), 5, '100 / 10 / 2');
   close(run('100 - 10 - 2'), 88, '100 - 10 - 2');
