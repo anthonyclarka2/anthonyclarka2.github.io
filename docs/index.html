@@ -31,6 +31,7 @@
     --accent:#5fd0f5;
     --accent-2:#f2a65a;
     --good:#7ee081;
+    --bad:#f28b82;
     --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
     --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
   }
@@ -204,6 +205,24 @@
   }
   .note b{color:var(--ink);font-weight:600}
 
+  /* Off-screen, still announced. The result updates on every keystroke, so the
+     thing that speaks is a separate sentence written after the user pauses. */
+  .sr{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);
+    white-space:nowrap;border:0;
+  }
+  .err{
+    margin:0 0 14px;padding:10px 12px;
+    background:rgba(242,139,130,.1);border:1px solid rgba(242,139,130,.4);
+    border-radius:9px;color:var(--bad);
+    font-family:var(--mono);font-size:12px;white-space:pre-wrap;
+  }
+  .err[hidden]{display:none}
+  /* A field that is refusing to be read says so at the field, not only in the
+     note at the bottom of the results. */
+  input[type=number][aria-invalid=true]{border-color:var(--bad);box-shadow:0 0 0 3px rgba(242,139,130,.14)}
+
   #chartwrap{margin-top:16px}
   svg#chart{width:100%;height:auto;display:block}
   .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-top:9px;font-family:var(--mono)}
@@ -250,6 +269,8 @@
 
   <!-- ============ CONTROLS ============ -->
   <div class="sticky">
+
+    <div id="err" class="err" role="alert" hidden></div>
 
     <div class="panel">
       <h2>Target</h2>
@@ -361,6 +382,10 @@
   <!-- ============ RESULTS ============ -->
   <div id="results" tabindex="-1">
 
+    <!-- Written after the user stops typing, so a screen reader hears the
+         settled answer rather than every keystroke on the way to it. -->
+    <p id="announce" class="sr" role="status" aria-live="polite" aria-atomic="true"></p>
+
     <div class="big">
       <div class="k"><span>Single telescope — smallest resolvable object</span><span class="tag" id="single-tag">—</span></div>
       <div class="val" id="single-val">—</div>
@@ -381,7 +406,14 @@
 
     <div class="panel" id="chartwrap">
       <h2>Resolution vs distance</h2>
-      <svg id="chart" viewBox="0 0 820 430" role="img" aria-label="Log-log plot of smallest resolvable object size versus distance"></svg>
+      <!-- role="img" hides everything inside it, so the description cannot live
+           in the drawing. Title and desc carry it, and the plot draws into its
+           own group so a redraw does not overwrite them. -->
+      <svg id="chart" viewBox="0 0 820 430" role="img" aria-labelledby="chart-title chart-desc">
+        <title id="chart-title">Smallest resolvable object against distance</title>
+        <desc id="chart-desc">The plot is drawn once the inputs are read.</desc>
+        <g id="chart-plot"></g>
+      </svg>
       <div class="legend">
         <span><i style="background:var(--accent)"></i>single telescope</span>
         <span id="leg-array" style="display:none"><i style="background:var(--accent-2)"></i>interferometer</span>
@@ -549,9 +581,29 @@ function fmtTime(s){
 /* ------------------------------------------------------------------- state */
 var $ = function(id){ return document.getElementById(id); };
 
+/* An empty, negative or out-of-range field used to fall back to a hidden
+   default and then report a confident number that contradicted what had been
+   typed. The arithmetic still needs a number to work on, so the fallback stays
+   -- but the field is now marked invalid and the page says which one, rather
+   than quietly showing an answer to a different question. */
+var FIELD_NAMES = {
+  dist:"Distance", wl:"Wavelength", dia:"Aperture diameter",
+  ntel:"Number of telescopes", sep:"Spacing"
+};
+var unreadable = [];
 function num(id, fallback){
-  var v = parseFloat($(id).value);
-  return isFinite(v) && v >= 0 ? v : fallback;
+  var el = $(id);
+  var raw = el.value;
+  var v = parseFloat(raw);
+  var ok = raw.trim() !== "" && isFinite(v) && v >= 0 &&
+           !el.validity.rangeUnderflow && !el.validity.rangeOverflow;
+  if(ok){
+    el.removeAttribute("aria-invalid");
+  } else {
+    el.setAttribute("aria-invalid","true");
+    unreadable.push(id);
+  }
+  return ok ? v : fallback;
 }
 function read(){
   var d = num("dist", 1) * DIST[$("dist-u").value].m;
@@ -660,8 +712,21 @@ function card(k, v, u){
 }
 
 function render(){
+  unreadable = [];
   var st = read();
   var dUnit = DIST[$("dist-u").value].label;
+
+  /* An alert is only written when its message actually changes. A live region
+     re-announces on every DOM write, and a field held empty would otherwise
+     repeat itself on each keystroke. */
+  var msg = unreadable.length
+    ? "Cannot read " + unreadable.map(function(id){ return FIELD_NAMES[id] || id; }).join(", ") +
+      ". Enter a positive number in the field marked in red."
+    : "";
+  if($("err").textContent !== msg){
+    $("err").textContent = msg;
+    $("err").hidden = !msg;
+  }
 
   /* echoes */
   $("dist-m").textContent = fmtLen(st.d) + " · " + fmtTime(st.d/C) + " lt";
@@ -744,6 +809,44 @@ function render(){
   $("note").innerHTML = notes.join("<br><br>");
 
   draw(st);
+  announce(st);
+}
+
+/* The headline figures are recomputed on every keystroke. Marking them live
+   would narrate the typing -- "6", "65", "65.", "65.2" -- so what gets
+   announced is a separate sentence, written once the user stops. This is the
+   difference between a live region that helps and one that makes the page
+   unusable with a screen reader. */
+var announceTimer = null;
+var booted = false;
+function announce(st){
+  /* The opening paint is not an answer to a question anyone asked, and live
+     regions populated during load are announced inconsistently. Stay quiet
+     until the first real interaction. */
+  if(!booted){ booted = true; return; }
+  if(announceTimer) clearTimeout(announceTimer);
+  announceTimer = setTimeout(function(){
+    announceTimer = null;
+    var said = [];
+    /* The figures on screen are derived from a fallback so the page stays
+       usable, but saying them aloud would assert a resolution for input the
+       page has just admitted it cannot read. When something is unreadable the
+       announcement reports that and stops there. */
+    if(unreadable.length){
+      said.push("Cannot read " +
+                unreadable.map(function(id){ return FIELD_NAMES[id] || id; }).join(", ") +
+                ". The figures shown are from the last readable values.");
+    } else {
+      if(st.D > 0)
+        said.push("Single telescope resolves " + fmtLen(st.sz1) +
+                " at " + fmtLen(st.d) + " (" + sig(st.d/AU,4) + " " + DIST[$("dist-u").value].label + ").");
+      if(st.on && st.B > 0)
+        said.push("Interferometer resolves " + fmtLen(st.sz2) +
+                  (st.D > 0 ? ", " + sig(st.sz1/st.sz2,3) + " times finer than the single dish." : "."));
+      if(!anyInstrument(st)) said.push("No valid instrument.");
+    }
+    $("announce").textContent = said.join(" ");
+  }, 400);
 }
 
 /* ------------------------------------------------------------------- chart */
@@ -772,10 +875,15 @@ function draw(st){
   pts.forEach(function(p){ if(isFinite(p.y1)) vals.push(p.y1); if(isFinite(p.y2)) vals.push(p.y2); });
   if(refV > 0) vals.push(refV);
   if(!vals.length){
-    $("chart").innerHTML =
+    $("chart-plot").innerHTML =
       '<rect x="76" y="16" width="726" height="368" fill="#0e1116" stroke="#232a33"/>' +
       '<text x="439" y="196" text-anchor="middle" fill="#7c8691" font-size="13">' +
       'No resolvable instrument — enter an aperture diameter, or enable an array with a non-zero spacing.</text>';
+    /* The message drawn above is unreachable: role="img" makes the whole
+       subtree presentational. The description is the only way it is spoken. */
+    $("chart-desc").textContent =
+      "Nothing to plot. No resolvable instrument has been entered — set an " +
+      "aperture diameter, or enable an array with a non-zero spacing.";
     return;
   }
 
@@ -810,11 +918,12 @@ function draw(st){
   }
 
   /* reference object */
-  if(refV > 0 && Math.log10(refV) >= ly0 && Math.log10(refV) <= ly1){
-    var yr = Y(Math.log10(refV));
-    var rlab = (function(r){
+  var refShown = refV > 0 && Math.log10(refV) >= ly0 && Math.log10(refV) <= ly1;
+  var rlab = refV > 0 ? (function(r){
       for(var i=0;i<REFS.length;i++) if(REFS[i].v === r) return REFS[i].t; return fmtLen(r);
-    })(refV);
+    })(refV) : "";
+  if(refShown){
+    var yr = Y(Math.log10(refV));
     s.push('<line x1="'+M.l+'" y1="'+yr.toFixed(1)+'" x2="'+(M.l+pw)+'" y2="'+yr.toFixed(1)+
            '" stroke="#7c8691" stroke-width="1" stroke-dasharray="5 4"/>');
     s.push('<text x="'+(M.l+pw-6)+'" y="'+(yr-7).toFixed(1)+'" text-anchor="end" fill="#8b95a2" '+
@@ -839,7 +948,27 @@ function draw(st){
   s.push('<text transform="translate(16,'+(M.t+ph/2)+') rotate(-90)" text-anchor="middle" fill="#9aa5b1" '+
          'font-size="12">Smallest resolvable object (metres)</text>');
 
-  $("chart").innerHTML = s.join("");
+  $("chart-plot").innerHTML = s.join("");
+
+  /* The description is the chart's whole accessible content, so it has to
+     carry what the drawing shows -- the curves and their range recomputed from
+     the inputs -- rather than merely naming the axes. */
+  var d = ["Log-log plot of the smallest resolvable object against distance, " +
+           "from " + xMin + " to " + xMax + " astronomical units."];
+  if(st.D > 0)
+    d.push("The single-telescope curve runs from " + fmtLen(st.k*st.lam/st.D*xMin*AU) +
+           " at the near edge to " + fmtLen(st.k*st.lam/st.D*xMax*AU) + " at the far edge.");
+  if(st.on && st.B > 0)
+    d.push("The interferometer curve runs from " + fmtLen(st.k*st.lam/st.B*xMin*AU) +
+           " to " + fmtLen(st.k*st.lam/st.B*xMax*AU) +
+           (st.D > 0 ? ", " + sig(st.sz1/st.sz2,3) + " times finer." : "."));
+  if(refShown)
+    d.push("A horizontal reference bar marks " + rlab +
+           (st.D > 0 ? ", which the single telescope can just resolve at " +
+             fmtLen(refV*st.D/(st.k*st.lam)/AU) + "." : ", outside the plotted range."));
+  else if(refV > 0)
+    d.push("The selected reference object lies outside the plotted range.");
+  $("chart-desc").textContent = d.join(" ");
 }
 
 /* ------------------------------------------------------------------- wiring */
