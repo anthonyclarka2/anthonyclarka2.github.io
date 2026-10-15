@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parse, evaluate, ParseError } = require('./parser.js');
+const { parse, evaluate, ParseError } = require('../../docs/slide-rule/parser.js');
 
 // Expected values are worked examples with independently known answers. Where a
 // result is irrational the literal is stated in full and compared with a

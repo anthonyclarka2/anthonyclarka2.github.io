@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { camera, easeInOutCubic } = require('./camera.js');
+const { camera, easeInOutCubic } = require('../../docs/slide-rule/camera.js');
 
 // Expected values are worked examples with independently known answers (the
 // arithmetic itself), never the clamp expressions the module implements. A test
