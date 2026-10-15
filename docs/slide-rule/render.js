@@ -346,16 +346,10 @@
 
   /* ------------------------------------------------------------- drawing */
 
-  /* How each class of graduation is drawn, as a fraction of the row's height.
-     A scale reads at a glance because its labelled graduations outrun the ones
-     between them: the long ticks are the landmarks a reader aims the cursor at,
-     and the short ones only fill in. Drawn as one length, the row is a comb and
-     the eye has nothing to hold on to. */
-  const GRADES = [
-    { len: 0.62, width: 1, opacity: 0.9, font: 9 },   // labelled
-    { len: 0.40, width: 0.7, opacity: 0.7, font: 7.5 }, // between the labels
-    { len: 0.24, width: 0.55, opacity: 0.55, font: 7 }, // fine subdivision
-  ];
+  /* How each class of graduation is drawn. These are the instrument's printing
+     metrics and live in rule669, because the slide plate sizes itself around
+     how far a row's printing reaches above its baseline. */
+  const GRADES = rule669.GRADES;
 
   function drawRow(parent, row, ticks, g) {
     const group = el('g', { id: `row-${row.name}`, class: `row${row.slide ? ' on-slide' : ''}` });

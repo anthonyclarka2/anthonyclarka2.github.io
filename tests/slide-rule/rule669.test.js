@@ -11,6 +11,113 @@ const g = geometry(RULE);
 
 /* --------------------------------------------------------------- the faces */
 
+/**
+ * The instrument's layout, transcribed from the photographs and recorded in
+ * plans/ISSUES.md.
+ *
+ * These are the expected values, written out by hand from the specification
+ * rather than derived from the module. A test that recomputed them the way the
+ * code does would agree with it by construction and could never catch a row
+ * moved, dropped or put on the wrong piece -- which is exactly the failure this
+ * exists to prevent.
+ */
+const SPEC = {
+  front: {
+    order: ['LL01', 'L', 'K', 'A', 'CF', 'CIF', 'CI', 'C', 'D', 'DI', 'LL1'],
+    slide: ['CF', 'CIF', 'CI', 'C'],
+    // The slide is divided exactly in two, so the line falls after two of its
+    // four rows.
+    midlineAfter: 'CIF',
+  },
+  back: {
+    order: ['LL02', 'LL03', 'DF', 'B', 'T', 'SRT', 'S', 'D', 'LL3', 'LL2'],
+    slide: ['B', 'T', 'SRT', 'S'],
+    // NOT the midpoint. The back splits one row from three, after B, which is
+    // why the line cannot be derived from the band's geometry and has to be
+    // stated for each face.
+    midlineAfter: 'B',
+  },
+};
+
+test('the front face carries its rows in the order the instrument prints them', () => {
+  // Top to bottom, with the slide's four scales between A and D. D belongs
+  // below the slide, not on it, and LL1 last of all.
+  assert.deepEqual(rule.layout('front').map((r) => r.name), SPEC.front.order);
+});
+
+test('the back face carries its rows in the order the instrument prints them', () => {
+  // Ten rows, not eleven: the back has no CIF and no DI. The slide's four sit
+  // between DF and D, and LL3 and LL2 finish the rule.
+  assert.deepEqual(rule.layout('back').map((r) => r.name), SPEC.back.order);
+});
+
+test('exactly the right rows ride the slide', () => {
+  // The slide is a separate physical bar, and a row printed on it travels with
+  // it. Getting this wrong does not throw: it moves a fixed scale onto the bar
+  // and a sliding one onto the stock, which then quietly reads against a piece
+  // that never moves.
+  for (const face of ['front', 'back']) {
+    const onSlide = rule.layout(face)
+      .filter((r) => r.slide)
+      .map((r) => r.name);
+    assert.deepEqual(onSlide, SPEC[face].slide, `${face} face slide rows`);
+  }
+});
+
+test('D is printed on the stock below the slide, not on the slide', () => {
+  // Stated on its own because it is the row that was reported missing from the
+  // front face, and because D is printed on BOTH faces while every other name
+  // is unique to one. It is the one row where a mistake here is invisible in the
+  // row list and only shows up as a missing scale.
+  for (const face of ['front', 'back']) {
+    const d = rule.layout(face).find((r) => r.name === 'D');
+    assert.ok(d, `the ${face} face has a D`);
+    assert.equal(d.slide, false, `D is printed on the stock on the ${face} face`);
+  }
+});
+
+test('the slide band spans the printing of its first and last rows', () => {
+  // The band is what tells you which rows move. It has to enclose the rows'
+  // graduations, and a row's graduations are drawn ABOVE its baseline, so the
+  // band's top is the first sliding row's baseline less its tallest graduation.
+  //
+  // It used to run from the first sliding row's baseline to the last one's
+  // baseline plus its height. That put the first sliding row's numbers on the
+  // stock above the bar and the first stock row's under the bar, where they
+  // were painted over and simply could not be seen.
+  const T = rule.TALLEST_GRADUATION;
+  for (const face of ['front', 'back']) {
+    const rows = rule.layout(face);
+    const onSlide = rows.filter((r) => r.slide);
+    const band = rule.slideBand(face);
+    const first = onSlide[0];
+    const last = onSlide[onSlide.length - 1];
+
+    assert.ok(Math.abs(band.top - (first.y - first.height * T)) < 1e-9,
+      `${face}: band starts at the first slide row's printing, got ${band.top}`);
+    assert.ok(Math.abs(band.bottom - last.y) < 1e-9,
+      `${face}: band ends at the last slide row's baseline, got ${band.bottom}`);
+    assert.ok(band.height > 0, `${face}: band has height`);
+  }
+});
+
+test('no stock row is printed inside the slide band', () => {
+  // The consequence that matters: a fixed scale overlapping the bar is drawn
+  // under the slide plate, because the slide group is appended after the stock.
+  // It does not throw and it does not move, it simply disappears.
+  const T = rule.TALLEST_GRADUATION;
+  for (const face of ['front', 'back']) {
+    const band = rule.slideBand(face);
+    for (const row of rule.layout(face)) {
+      if (row.slide) continue;
+      const inkTop = row.y - row.height * T;
+      assert.ok(row.y <= band.top || inkTop >= band.bottom,
+        `${face}: stock row ${row.name} prints ${inkTop.toFixed(1)}..${row.y.toFixed(1)}, `
+        + `which is inside the band at ${band.top.toFixed(1)}..${band.bottom.toFixed(1)}`);
+    }
+  }
+});
+
 test('both faces of the rule are described', () => {
   assert.ok(Array.isArray(rule.FRONT) && rule.FRONT.length > 0, 'front face');
   assert.ok(Array.isArray(rule.BACK) && rule.BACK.length > 0, 'back face');
@@ -124,15 +231,18 @@ test('the slide band is separated from the stock by a visible seam', () => {
     const first = rows.find((r) => r.slide);
     const lastStock = rows.slice(0, first.index).pop();
 
-    assert.equal(band.top, first.y, `${face} the band starts at the first slide row`);
     if (lastStock) {
-      // The seam is the gap between the two pieces: it sits after the last
-      // stock row and before the first slide row, exactly one seam wide.
-      const stockBottom = lastStock.y + lastStock.height;
-      assert.ok(band.top >= stockBottom,
-        `${face} seam sits clear of the stock: band starts ${band.top}, stock ends ${stockBottom}`);
-      assert.equal(band.top - stockBottom, rule.SEAM,
-        `${face} the gap is exactly the seam width`);
+      // The seam is the blank gap between the two pieces. Measured between their
+      // PRINTING rather than their baselines, since a row's graduations stop at
+      // its baseline: the gap runs from the bottom of the stock's last
+      // graduations to the top of the slide's first, and it has to be wide
+      // enough to read as a join.
+      const stockInkBottom = lastStock.y;
+      const slideInkTop = first.y - first.height * rule.TALLEST_GRADUATION;
+      const gap = slideInkTop - stockInkBottom;
+      assert.ok(gap >= rule.SEAM,
+        `${face}: only ${gap.toFixed(2)} units between the stock's printing and `
+        + `the slide's, which is less than the ${rule.SEAM} unit seam`);
       assert.ok(rule.SEAM > 0, 'a seam width is defined, and it is visible');
     }
     assert.ok(band.bottom > band.top, `${face} band has height`);

@@ -278,6 +278,127 @@ test('a legend is drawn in its row colour, as the instrument prints it', () => {
   });
 });
 
+test("every row's graduations are printed on the piece they belong to", () => {
+  // The two plates are drawn as rects behind their rows, and a row's
+  // graduations are drawn ABOVE its baseline. The band's edges therefore have to
+  // account for that, or the first sliding row's numbers end up printed on the
+  // stock above the slide and the first stock row's end up under the slide
+  // plate, where they are invisible. Neither throws; one looks like the wrong
+  // boundary and the other looks like a missing scale.
+  for (const face of ['front', 'back']) {
+    withStubDom(() => {
+      const svg = stubNode('svg');
+      render.draw(svg, RULE, { face });
+      const plate = byId(svg, 'slide-plate')[0];
+      const top = Number(plate.getAttribute('y'));
+      const bottom = top + Number(plate.getAttribute('height'));
+
+      for (const group of byId(svg, 'row-')) {
+        const onSlide = group.getAttribute('class').includes('on-slide');
+        // Graduations only: a vertical line's extent is y1 to y2.
+        const lines = group.children
+          .filter((c) => c.getAttribute('id') === 'tick')
+          .map((c) => [Number(c.getAttribute('y1')), Number(c.getAttribute('y2'))]);
+        assert.ok(lines.length > 0, `${group.getAttribute('id')} is graduated`);
+        const inkTop = Math.min(...lines.flat());
+        const inkBottom = Math.max(...lines.flat());
+
+        const where = onSlide ? 'the slide' : 'the stock';
+        if (onSlide) {
+          assert.ok(inkTop >= top && inkBottom <= bottom,
+            `${face}: ${group.getAttribute('id')} is on ${where}, but its `
+            + `graduations run ${inkTop.toFixed(1)}..${inkBottom.toFixed(1)} `
+            + `against a plate at ${top.toFixed(1)}..${bottom.toFixed(1)}`);
+        } else {
+          assert.ok(inkBottom <= top || inkTop >= bottom,
+            `${face}: ${group.getAttribute('id')} is on ${where}, but its `
+            + `graduations run ${inkTop.toFixed(1)}..${inkBottom.toFixed(1)}, `
+            + `which is inside the slide plate at ${top.toFixed(1)}..${bottom.toFixed(1)}`);
+        }
+      }
+    });
+  }
+});
+
+/**
+ * Every row group in a drawn tree. `byId` matches an exact id, so a prefix has
+ * to be walked: an earlier version of this test passed `byId(svg, 'row-')`,
+ * which matched nothing, asserted nothing, and reported green.
+ */
+function rowGroups(node, out = []) {
+  if (node.attrs && typeof node.attrs.id === 'string'
+      && node.attrs.id.startsWith('row-')) out.push(node);
+  for (const child of node.children || []) rowGroups(child, out);
+  return out;
+}
+
+test("every row's graduations are printed on the piece they belong to", () => {
+  // The two plates are drawn as rects behind their rows, and a row's
+  // graduations are drawn ABOVE its baseline. The band's edges therefore have to
+  // account for that, or the first sliding row's numbers end up printed on the
+  // stock above the slide and the first stock row's end up under the slide
+  // plate, where they are invisible. Neither throws; one looks like the wrong
+  // boundary and the other looks like a missing scale.
+  //
+  // Graduation coordinates are written rounded to a tenth, so a mark whose edge
+  // is mathematically flush with the plate reads as a tenth short. EPS is that
+  // resolution: without it the comparison fails on a difference far below a
+  // pixel, which is how this test spent one cycle failing for no reason.
+  const EPS = 0.1;
+  for (const face of ['front', 'back']) {
+    withStubDom(() => {
+      const svg = stubNode('svg');
+      render.draw(svg, RULE, { face });
+      const plate = byId(svg, 'slide-plate')[0];
+      assert.ok(plate, `${face}: the slide is drawn as a plate`);
+      const top = Number(plate.getAttribute('y'));
+      const bottom = top + Number(plate.getAttribute('height'));
+
+      const rows = rowGroups(svg);
+      assert.ok(rows.length >= 10, `${face}: found every row, got ${rows.length}`);
+
+      // Rows whose graduations are unknown are drawn as a name and nothing
+      // else, rather than invented. They have no ink to place, so they are
+      // listed here and checked separately: an empty row should only ever be an
+      // unverified one, never a graduated scale that silently drew nothing.
+      const unverified = rule669.layout(face)
+        .filter((r) => r.unverified)
+        .map((r) => r.name);
+
+      for (const group of rows) {
+        const onSlide = group.getAttribute('class').includes('on-slide');
+        // Graduations only: a vertical line's extent is y1 to y2.
+        const lines = group.children
+          .filter((c) => c.getAttribute('id') === 'tick')
+          .map((c) => [Number(c.getAttribute('y1')), Number(c.getAttribute('y2'))]);
+        const name = group.getAttribute('id').replace('row-', '');
+
+        if (lines.length === 0) {
+          assert.ok(unverified.includes(name),
+            `${face}: ${name} is graduated but drew no graduations`);
+          continue;
+        }
+
+        const inkTop = Math.min(...lines.flat());
+        const inkBottom = Math.max(...lines.flat());
+
+        const where = onSlide ? 'the slide' : 'the stock';
+        if (onSlide) {
+          assert.ok(inkTop >= top - EPS && inkBottom <= bottom + EPS,
+            `${face}: ${name} is on ${where}, but its graduations run `
+            + `${inkTop.toFixed(1)}..${inkBottom.toFixed(1)} `
+            + `against a plate at ${top.toFixed(1)}..${bottom.toFixed(1)}`);
+        } else {
+          assert.ok(inkBottom <= top + EPS || inkTop >= bottom - EPS,
+            `${face}: ${name} is on ${where}, but its graduations run `
+            + `${inkTop.toFixed(1)}..${inkBottom.toFixed(1)}, `
+            + `which is inside the slide plate at ${top.toFixed(1)}..${bottom.toFixed(1)}`);
+        }
+      }
+    });
+  }
+});
+
 /* -------------------------------------------------------------- the layout */
 
 test('the rule is drawn as two pieces with a seam between them', () => {
