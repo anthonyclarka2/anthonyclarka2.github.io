@@ -28,6 +28,10 @@
   let tween = null;
   let cam = null;
   let face = 'front';
+  /* The face the reader picked with the Front/Back buttons, if any. Separate
+     from `face`, which is whichever face is currently drawn: a choice has to
+     survive the redraws that follow it, or the buttons do nothing. */
+  let faceChoice = null;
   let raf = 0;
   let startedAt = 0;
   let playing = false;
@@ -155,17 +159,15 @@
   }
 
   function drawRule(p) {
-    // An operation is only visible on the face that prints the scales it needs.
-    // Trig lives on the back, so the rule turns over rather than the animation
-    // pretending a scale exists on the front.
+    // An operation is only visible on the face that prints the scales it needs,
+    // so the rule turns over rather than the animation pretending a scale exists
+    // where it does not. An explicit choice from the Front/Back buttons wins,
+    // though: those exist to let the other side of the instrument be looked at,
+    // and they used to be overridden on every redraw.
     const needed = scalesUsed(p) || [];
-    const wanted = needed.find((n) => rule669.faceFor(n));
-    if (wanted && rule669.faceFor(wanted) !== face) {
-      face = rule669.faceFor(wanted);
-      for (const chip of document.querySelectorAll('[data-face]')) {
-        chip.classList.toggle('on', chip.dataset.face === face);
-      }
-    }
+    const next = rule669.resolveFace(needed, { chosen: faceChoice, current: face });
+    if (next !== face) face = next;
+    markFaceChips();
 
     parts = render.draw(svg, RULE, { face });
     miniParts = render.draw($('minimap'), RULE, { face, minimap: true });
@@ -175,13 +177,39 @@
 
     render.move(parts, 0, 0);
     render.move(miniParts, 0, 0, cam.overview());
+
+    // Said plainly rather than turning the rule back: the reader chose a face,
+    // and if the calculation needs a scale that is not printed there, the
+    // honest answer is that this operation cannot be performed on this side.
+    noteFaceCanShow(p, needed);
+  }
+
+  /** Tell the reader when the face they chose cannot show the operation. */
+  function noteFaceCanShow(p, needed) {
+    const box = $('face-note');
+    if (!box) return;
+    if (rule669.faceCanShow(needed, face)) {
+      box.hidden = true;
+      box.textContent = '';
+      return;
+    }
+    const missing = needed.filter((n) => !rule669.facesFor(n).includes(face));
+    box.hidden = false;
+    box.textContent = `${face === 'back' ? 'Back' : 'Front'} face: `
+      + `${p.label || 'this operation'} needs ${missing.join(' and ')}, `
+      + `which this side does not carry.`;
+  }
+
+  function markFaceChips() {
+    for (const chip of document.querySelectorAll('[data-face]')) {
+      chip.classList.toggle('on', chip.dataset.face === face);
+    }
   }
 
   function setFace(next) {
     face = next;
-    for (const chip of document.querySelectorAll('[data-face]')) {
-      chip.classList.toggle('on', chip.dataset.face === face);
-    }
+    faceChoice = next;
+    markFaceChips();
     if (current) drawRule(current);
   }
 
@@ -394,6 +422,11 @@
     stop();
     const text = expr.value;
     $('parse-note').textContent = '';
+    // A face picked to have a look round does not govern the next calculation:
+    // the new operation decides which side it needs. Cleared here rather than in
+    // the face buttons so that re-running the same expression keeps the reader's
+    // choice, while a different expression is free to turn the rule over.
+    faceChoice = null;
 
     let p;
     try {

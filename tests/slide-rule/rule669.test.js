@@ -118,6 +118,72 @@ test('no stock row is printed inside the slide band', () => {
   }
 });
 
+test('a chosen face wins over the one the operation implies', () => {
+  // The Back button did nothing. setFace recorded the choice and then called
+  // drawRule, which recomputed the face from the expression and overwrote it: for
+  // 2.5 * 3.7 the scales used are C and D, C is printed on the front only, so
+  // the face was reset to front and the click appeared inert.
+  //
+  // It looked like it worked for sin(30) only because S is back-only, so the
+  // automatic choice and the manual one happened to agree.
+  assert.equal(
+    rule.resolveFace(['C', 'D'], { chosen: 'back', current: 'front' }),
+    'back',
+    'an explicit choice is not overridden by the expression',
+  );
+});
+
+test('without a choice the face is derived from the scales the plan reads', () => {
+  // The automatic switch is still right: the app must not animate a scale that
+  // is not printed on the face being shown.
+  assert.equal(rule.resolveFace(['C', 'D'], { current: 'back' }), 'front',
+    'C is printed on the front only');
+  assert.equal(rule.resolveFace(['T'], { current: 'front' }), 'back',
+    'tangent lives on the back, so the rule turns over');
+});
+
+test('when no face carries every scale, the rule turns to the first that exists', () => {
+  // Sine reads with S and CI. S is printed on the back and CI on the front, so
+  // no single face carries both, and this is the case that reaches the
+  // fallback. It has to turn to the back -- S is the scale being set -- rather
+  // than narrate a sine against an S that is not on the face being shown.
+  //
+  // That the other scale is then missing is a real gap, recorded as an open
+  // question in plans/ISSUES.md, and not something this function can fix.
+  assert.equal(rule.resolveFace(['S', 'CI'], { current: 'front' }), 'back',
+    'trig turns the rule over');
+  assert.equal(rule.resolveFace(['S', 'CI'], { current: 'back' }), 'back',
+    'and stays there rather than oscillating');
+});
+
+test('a scale printed on both faces is satisfied by either', () => {
+  // D is on the front AND the back, so an operation reading only D can be shown
+  // on whichever face is up.
+  assert.equal(rule.resolveFace(['D'], { current: 'front' }), 'front');
+  assert.equal(rule.resolveFace(['D'], { current: 'back' }), 'back');
+});
+
+test('the face stays put when the operation needs nothing it can show', () => {
+  // No scale in the list is on the rule at all. Turning the instrument over for
+  // it would be a pointless flash, so it keeps the face it is on.
+  assert.equal(rule.resolveFace([], { current: 'back' }), 'back');
+  assert.equal(rule.resolveFace(['Ln'], { current: 'front' }), 'front',
+    'a scale the rule does not print does not send it to either face');
+});
+
+test('a face can be asked whether it can show an operation', () => {
+  // Needed so the app can say why it is showing a face it cannot perform on,
+  // rather than silently turning the rule back.
+  assert.equal(rule.faceCanShow(['C', 'D'], 'front'), true);
+  assert.equal(rule.faceCanShow(['C', 'D'], 'back'), false,
+    'C is not printed on the back');
+  assert.equal(rule.faceCanShow(['D'], 'back'), true,
+    'D is printed on both faces, so either will do');
+  assert.equal(rule.faceCanShow(['S'], 'back'), true);
+  assert.equal(rule.faceCanShow(['S', 'CI'], 'back'), false,
+    'CI is not printed on the back, so sine cannot be read on one face');
+});
+
 test('both faces of the rule are described', () => {
   assert.ok(Array.isArray(rule.FRONT) && rule.FRONT.length > 0, 'front face');
   assert.ok(Array.isArray(rule.BACK) && rule.BACK.length > 0, 'back face');

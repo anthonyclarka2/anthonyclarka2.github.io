@@ -227,15 +227,78 @@
 
   /** Which face a scale lives on, so the app can switch to show it. */
   function faceFor(name) {
-    if (FRONT.some((r) => r.name === name)) return 'front';
-    if (BACK.some((r) => r.name === name)) return 'back';
-    return null;
+    const both = facesFor(name);
+    return both.length ? both[0] : null;
+  }
+
+  /**
+   * Every face a scale is printed on.
+   *
+   * D is printed on both, so a single face is not the whole answer for it.
+   * `faceFor` returns the first and is right for "which face should I show",
+   * but not for "can this face show D" -- which is false on the back if D is
+   * only ever reported as front, and that is how a reciprocal read got refused
+   * on a face that prints it.
+   */
+  function facesFor(name) {
+    const out = [];
+    if (FRONT.some((r) => r.name === name)) out.push('front');
+    if (BACK.some((r) => r.name === name)) out.push('back');
+    return out;
+  }
+
+  /**
+   * Can this face show an operation?
+   *
+   * Every scale it reads has to be printed here. True when the list is empty,
+   * because an operation that reads nothing off the rule can be narrated on
+   * either face -- there is no scale to be missing.
+   */
+  function faceCanShow(scales, face) {
+    return scales.every((name) => facesFor(name).includes(face));
+  }
+
+  /**
+   * Which face to draw.
+   *
+   * An explicit choice always wins. That is the whole point of the Front and
+   * Back buttons: being able to look at the other side of the instrument. It
+   * used not to, because the face was recomputed from the expression on every
+   * redraw, so choosing the back for `2.5 * 3.7` put it straight back to the
+   * front -- C is printed on the front only, so the automatic switch always had
+   * an opinion. The button appeared inert, and appeared to work only for `sin`,
+   * where the two answers happened to agree.
+   *
+   * With no choice, the face follows the scales the plan reads, so the rule
+   * turns over rather than the animation pretending a scale exists where it
+   * does not. A scale printed on both faces -- D is -- is satisfied by either,
+   * so reading only D leaves the rule where it is.
+   *
+   * `chosen` is meant to be cleared when the expression changes, so that a face
+   * picked to have a look round does not then silently govern the next
+   * calculation.
+   */
+  function resolveFace(scales, { chosen = null, current = 'front' } = {}) {
+    if (chosen) return chosen;
+    if (faceCanShow(scales, current)) return current;
+    for (const candidate of ['front', 'back']) {
+      if (faceCanShow(scales, candidate)) return candidate;
+    }
+    // Nothing can show every scale. Sine is the case that reaches here: S is
+    // printed on the back and CI on the front, so the two scales a sine is read
+    // with are never on the same face. Fall back to the first scale that exists
+    // anywhere, so trigonometry still turns the rule over rather than narrating
+    // an S scale that is not on the face being shown. Which of the two is the
+    // better face to show is recorded as an open question in plans/ISSUES.md.
+    const first = scales.find((name) => facesFor(name).length);
+    return first ? facesFor(first)[0] : current;
   }
 
   return {
     FRONT, BACK, FACES, SLIDE_SCALES,
     ROW_H, TOP_PAD, BOTTOM_PAD, SLIDE_BAND_SCALE, SEAM,
-    layout, slideBand, slideMidline, height, width, faceFor,
+    layout, slideBand, slideMidline, height, width,
+    faceFor, facesFor, faceCanShow, resolveFace,
     GRADES, TALLEST_GRADUATION,
   };
 });
