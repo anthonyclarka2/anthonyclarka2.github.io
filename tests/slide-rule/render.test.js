@@ -399,6 +399,41 @@ test("every row's graduations are printed on the piece they belong to", () => {
   }
 });
 
+test('the slide is drawn with the dividing line the instrument carries', () => {
+  // Not the same thing as a seam. A seam is a gap between two pieces and is
+  // drawn as the edge of the plate; this is a line PRINTED on the bar, so it
+  // belongs inside the slide group and travels with it. Drawing it as an edge
+  // would make the slide look like two stacked bars.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const slide = byId(svg, 'slide')[0];
+    const lines = slide.children
+      .filter((c) => c.getAttribute('id') === 'slide-midline');
+    assert.equal(lines.length, 1, 'the slide carries one dividing line');
+    assert.equal(lines[0].getAttribute('id'), 'slide-midline');
+  });
+});
+
+test('the dividing line is inside the slide, where it can be seen', () => {
+  for (const face of ['front', 'back']) {
+    withStubDom(() => {
+      const svg = stubNode('svg');
+      render.draw(svg, RULE, { face });
+      const plate = byId(svg, 'slide-plate')[0];
+      const top = Number(plate.getAttribute('y'));
+      const bottom = top + Number(plate.getAttribute('height'));
+      const mid = Number(byId(svg, 'slide-midline')[0].getAttribute('y1'));
+
+      assert.ok(mid > top && mid < bottom,
+        `${face}: the line at ${mid} is outside the slide plate `
+        + `${top}..${bottom}, so it would be invisible`);
+      assert.ok(Math.abs(mid - rule669.slideMidline(face)) < 0.01,
+        `${face}: the line is drawn where the layout says it is`);
+    });
+  }
+});
+
 /* -------------------------------------------------------------- the layout */
 
 test('the rule is drawn as two pieces with a seam between them', () => {

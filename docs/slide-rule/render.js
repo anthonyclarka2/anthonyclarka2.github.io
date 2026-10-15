@@ -559,6 +559,19 @@
       fill: 'var(--slide-shadow)', opacity: 0.35,
     }));
 
+    /* The line the instrument prints across the bar, dividing it in two: after
+       CIF on the front face, after B on the back. Drawn inside the slide group
+       so it travels with the bar, and lighter than either seam, because it is a
+       division within one piece of material rather than a join between two. */
+    slide.appendChild(el('line', {
+      id: 'slide-midline',
+      x1: extent.left, x2: extent.left + total,
+      y1: rule669.slideMidline(face), y2: rule669.slideMidline(face),
+      stroke: 'var(--slide-edge)',
+      'stroke-width': 1,
+      opacity: 0.7,
+    }));
+
     /* Rows, each on the piece it is printed on. */
     for (const row of rows) {
       drawRow(row.slide ? slide : stock, row, graduations(g, row), g);
