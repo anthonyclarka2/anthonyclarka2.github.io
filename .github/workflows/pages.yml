@@ -36,8 +36,14 @@ jobs:
 
       # The tests need no install step: they use node:test and node:assert
       # from the standard library and the repository has no package.json.
+      #
+      # The glob is quoted so Node expands it, not the shell, and so the form is
+      # the same everywhere. Do not simplify this to a bare directory: `node
+      # --test tests/` scans the directory on Node 26 but tries to require() it
+      # as a module on Node 24, which fails the run. This form finds the same
+      # 162 tests on both.
       - name: Run tests
-        run: node --test tests/
+        run: node --test "tests/**/*.test.js"
 
   deploy:
     name: Deploy
