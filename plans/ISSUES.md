@@ -50,7 +50,7 @@ Transcribed from the photographs. This is the specification; the row order in
   DF       stock
   ---------------- upper boundary of the slide ----------------
   B        slide
-  -------- horizontal line: divides the slide exactly in two ----
+  -------- horizontal line: between B and T ----
   T        slide
   SRT      slide
   S        slide
@@ -63,9 +63,11 @@ Transcribed from the photographs. This is the specification; the row order in
 Two features of the slide are called out separately because they are not row
 boundaries and are easy to mistake for them:
 
-- The slide is divided **exactly in half** by a horizontal line, between `CIF`
-  and `CI` on the front, and between `B` and `T` on the back. Both faces split
-  the same way.
+- Each face has a horizontal line printed across its slide, and **the two lines
+  are not in the same place**. The front's falls between `CIF` and `CI`, which
+  divides its four sliding rows exactly in half. The back's falls between `B`
+  and `T`, which divides its four one from three. Only the front divides exactly
+  in two.
 - The seam above and below the slide is a *gap between pieces*, not a rule.
 
 ---

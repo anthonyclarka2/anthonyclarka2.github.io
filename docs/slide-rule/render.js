@@ -559,10 +559,12 @@
       fill: 'var(--slide-shadow)', opacity: 0.35,
     }));
 
-    /* The line the instrument prints across the bar, dividing it in two: after
-       CIF on the front face, after B on the back. Drawn inside the slide group
-       so it travels with the bar, and lighter than either seam, because it is a
-       division within one piece of material rather than a join between two. */
+    /* The line the instrument prints across the bar: after CIF on the front
+       face, after B on the back. Only the front divides its slide exactly in
+       two; the back divides one row from three, so the position is per-face
+       data rather than a midpoint. Drawn inside the slide group so it travels
+       with the bar, and lighter than either seam, because it is a division
+       within one piece of material rather than a join between two. */
     slide.appendChild(el('line', {
       id: 'slide-midline',
       x1: extent.left, x2: extent.left + total,
