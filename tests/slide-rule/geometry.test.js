@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { geometry } = require('./geometry.js');
+const { geometry } = require('../../docs/slide-rule/geometry.js');
 
 // Expected values are worked examples with independently known answers (the
 // arithmetic itself), never the log formulas the module implements. A test that

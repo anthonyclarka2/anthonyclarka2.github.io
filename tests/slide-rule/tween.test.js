@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createTween, easeInOut, positionAt } = require('./tween.js');
+const { createTween, easeInOut, positionAt } = require('../../docs/slide-rule/tween.js');
 
 const close = (actual, expected, what) =>
   assert.ok(Math.abs(actual - expected) < 1e-9,

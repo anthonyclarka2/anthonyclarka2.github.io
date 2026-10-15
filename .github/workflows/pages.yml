@@ -1,0 +1,70 @@
+# Publishes docs/ to GitHub Pages using GitHub's first-party Pages actions.
+#
+# The site is plain static HTML with no build step and no dependencies, so
+# "building" here is just uploading docs/ verbatim. That is deliberate: the
+# publishing directory contains site files and nothing else, so there is no
+# filter step that could drift and quietly publish a file that was meant to
+# stay private.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# GitHub Pages only ever runs one deployment at a time. Queuing rather than
+# cancelling means a push is never left half-deployed.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned explicitly rather than trusting the runner image, so the tests
+      # that gate a deploy run on a known Node.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # The tests need no install step: they use node:test and node:assert
+      # from the standard library and the repository has no package.json.
+      #
+      # The glob is quoted so Node expands it, not the shell, and so the form is
+      # the same everywhere. Do not simplify this to a bare directory: `node
+      # --test tests/` scans the directory on Node 26 but tries to require() it
+      # as a module on Node 24, which fails the run. This form finds the same
+      # 162 tests on both.
+      - name: Run tests
+        run: node --test "tests/**/*.test.js"
+
+  deploy:
+    name: Deploy
+    needs: test
+    # Pull requests get test signal but never publish to the live domain.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v6
+
+      # path is resolved relative to the workspace root, not the job's
+      # working directory.
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

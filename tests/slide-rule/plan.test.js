@@ -3,8 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { plan } = require('./plan.js');
-const { geometry } = require('./geometry.js');
+const { plan } = require('../../docs/slide-rule/plan.js');
+const { geometry } = require('../../docs/slide-rule/geometry.js');
 
 const RULE = { axisPx: 1000, decades: 4 };
 const g = geometry(RULE);
