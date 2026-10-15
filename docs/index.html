@@ -24,7 +24,10 @@
     --line-2:#2e3742;
     --ink:#e8ecf1;
     --ink-2:#9aa5b1;
-    --ink-3:#66707c;
+    /* The dimmest ink carries every section heading, the working-card captions
+       and the footer, so it has to clear 4.5:1 on the lightest panel (#161b22)
+       -- not merely look like a dim grey. #7c8691 sat at 3.44:1 there. */
+    --ink-3:#7c8691;
     --accent:#5fd0f5;
     --accent-2:#f2a65a;
     --good:#7ee081;
@@ -46,6 +49,22 @@
     background-repeat:no-repeat;
   }
   .wrap{max-width:1180px;margin:0 auto;padding:34px 22px 70px}
+
+  /* A keyboard arriving at the top of this page has 39 controls to cross before
+     it reaches the answer, because the 34 preset chips sit between them. The
+     skip link is the only thing that makes that proportionate, so it is the
+     first focusable thing in the document and stays out of the way until
+     focused. */
+  .skip{
+    position:absolute;left:-9999px;top:0;z-index:10;
+    background:var(--accent);color:var(--bg);
+    padding:10px 14px;border-radius:0 0 9px 0;
+    font-size:13.5px;font-weight:600;text-decoration:none;
+  }
+  .skip:focus{left:0;outline:2px solid var(--ink);outline-offset:2px}
+  /* The skip target is focused programmatically rather than reached by keyboard,
+     so it is a navigation aid rather than a control and takes no ring. */
+  #results:focus{outline:none}
 
   header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:26px}
   h1{
@@ -79,11 +98,16 @@
 
   .field{margin-bottom:15px}
   .field:last-child{margin-bottom:0}
-  label.lab{
+  /* The row holds the label and its echoed reading side by side, but only the
+     label is inside the label element. A for-label's whole subtree becomes the
+     field's accessible name, so parking the live reading in there made the
+     field announce its own current value -- and change that name on every
+     keystroke. The echo is now the field's description instead. */
+  .labrow{
     display:flex;justify-content:space-between;align-items:baseline;gap:8px;
     font-size:12.5px;color:var(--ink-2);margin-bottom:6px;
   }
-  .lab .hint{color:var(--ink-3);font-family:var(--mono);font-size:11px}
+  .hint{color:var(--ink-3);font-family:var(--mono);font-size:11px}
   .row{display:flex;gap:8px}
   .row > input[type=number]{flex:1 1 auto;min-width:0}
   select,input[type=number]{
@@ -117,6 +141,9 @@
   }
   .chip:hover{border-color:var(--accent);color:var(--accent);background:rgba(95,208,245,.07)}
   .chip.on{border-color:var(--accent);color:var(--accent);background:rgba(95,208,245,.12)}
+  /* The 34 presets are the most keyboard-friendly controls on the page, so they
+     cannot be the only family without a visible focus ring. */
+  .chip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 
   .toggle{
     display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;
@@ -199,6 +226,7 @@
 </style>
 </head>
 <body>
+<a class="skip" href="#results">Skip to results</a>
 <div class="wrap">
 
 <header>
@@ -227,10 +255,13 @@
       <h2>Target</h2>
 
       <div class="field">
-        <label class="lab" for="dist"><span>Distance</span><span class="hint" id="dist-m">—</span></label>
+        <div class="labrow">
+          <label class="lab" for="dist"><span>Distance</span></label>
+          <span class="hint" id="dist-m">—</span>
+        </div>
         <div class="row">
-          <input type="number" id="dist" value="5.2" step="any" min="0">
-          <select id="dist-u">
+          <input type="number" id="dist" value="5.2" step="any" min="0" aria-describedby="dist-m">
+          <select id="dist-u" aria-label="Distance unit">
             <option value="au" selected>AU</option>
             <option value="lm">light-min</option>
             <option value="lh">light-hr</option>
@@ -240,10 +271,13 @@
       </div>
 
       <div class="field">
-        <label class="lab" for="wl"><span>Wavelength λ</span><span class="hint" id="wl-m">—</span></label>
+        <div class="labrow">
+          <label class="lab" for="wl"><span>Wavelength λ</span></label>
+          <span class="hint" id="wl-m">—</span>
+        </div>
         <div class="row">
-          <input type="number" id="wl" value="550" step="any" min="0">
-          <select id="wl-u">
+          <input type="number" id="wl" value="550" step="any" min="0" aria-describedby="wl-m">
+          <select id="wl-u" aria-label="Wavelength unit">
             <option value="nm" selected>nm</option>
             <option value="um">µm</option>
             <option value="mm">mm</option>
@@ -255,7 +289,7 @@
       </div>
 
       <div class="field">
-        <label class="lab" for="criterion"><span>Criterion</span></label>
+        <div class="labrow"><label class="lab" for="criterion"><span>Criterion</span></label></div>
         <select id="criterion" style="width:100%">
           <option value="1.22" selected>Rayleigh — k = 1.22</option>
           <option value="1">Simple — k = 1.00</option>
@@ -270,10 +304,13 @@
     <div class="panel">
       <h2>Single telescope</h2>
       <div class="field">
-        <label class="lab" for="dia"><span>Aperture diameter D</span><span class="hint" id="dia-m">—</span></label>
+        <div class="labrow">
+          <label class="lab" for="dia"><span>Aperture diameter D</span></label>
+          <span class="hint" id="dia-m">—</span>
+        </div>
         <div class="row">
-          <input type="number" id="dia" value="8" step="any" min="0">
-          <select id="dia-u">
+          <input type="number" id="dia" value="8" step="any" min="0" aria-describedby="dia-m">
+          <select id="dia-u" aria-label="Aperture diameter unit">
             <option value="mm">mm</option>
             <option value="cm">cm</option>
             <option value="m" selected>m</option>
@@ -295,15 +332,21 @@
 
       <div id="if-block">
         <div class="field">
-          <label class="lab" for="ntel"><span>Number of telescopes N</span><span class="hint" id="ntel-m">—</span></label>
-          <input type="number" id="ntel" value="4" step="1" min="2" max="200">
+          <div class="labrow">
+            <label class="lab" for="ntel"><span>Number of telescopes N</span></label>
+            <span class="hint" id="ntel-m">—</span>
+          </div>
+          <input type="number" id="ntel" value="4" step="1" min="2" max="200" aria-describedby="ntel-m">
         </div>
 
         <div class="field">
-          <label class="lab" for="sep"><span>Spacing s (equidistant)</span><span class="hint" id="sep-m">—</span></label>
+          <div class="labrow">
+            <label class="lab" for="sep"><span>Spacing s (equidistant)</span></label>
+            <span class="hint" id="sep-m">—</span>
+          </div>
           <div class="row">
-            <input type="number" id="sep" value="50" step="any" min="0">
-            <select id="sep-u">
+            <input type="number" id="sep" value="50" step="any" min="0" aria-describedby="sep-m">
+            <select id="sep-u" aria-label="Spacing unit">
               <option value="m" selected>m</option>
               <option value="km">km</option>
             </select>
@@ -316,7 +359,7 @@
   </div>
 
   <!-- ============ RESULTS ============ -->
-  <div>
+  <div id="results" tabindex="-1">
 
     <div class="big">
       <div class="k"><span>Single telescope — smallest resolvable object</span><span class="tag" id="single-tag">—</span></div>
@@ -342,7 +385,7 @@
       <div class="legend">
         <span><i style="background:var(--accent)"></i>single telescope</span>
         <span id="leg-array" style="display:none"><i style="background:var(--accent-2)"></i>interferometer</span>
-        <span><i style="background:var(--ink-3)"></i><select id="refsel" style="padding:2px 6px;font-size:11px"></select></span>
+        <span><i style="background:var(--ink-3)"></i><select id="refsel" aria-label="Reference object to compare against" style="padding:2px 6px;font-size:11px"></select></span>
       </div>
       <div class="note">
         Log–log: resolvable size grows linearly with distance, so doubling the range doubles the detail needed.
@@ -731,7 +774,7 @@ function draw(st){
   if(!vals.length){
     $("chart").innerHTML =
       '<rect x="76" y="16" width="726" height="368" fill="#0e1116" stroke="#232a33"/>' +
-      '<text x="439" y="196" text-anchor="middle" fill="#66707c" font-size="13">' +
+      '<text x="439" y="196" text-anchor="middle" fill="#7c8691" font-size="13">' +
       'No resolvable instrument — enter an aperture diameter, or enable an array with a non-zero spacing.</text>';
     return;
   }
@@ -753,7 +796,7 @@ function draw(st){
     var y = Y(e);
     s.push('<line x1="'+M.l+'" y1="'+y.toFixed(1)+'" x2="'+(M.l+pw)+'" y2="'+y.toFixed(1)+
            '" stroke="#1b212a" stroke-width="1"/>');
-    s.push('<text x="'+(M.l-9)+'" y="'+(y+4).toFixed(1)+'" text-anchor="end" fill="#66707c" '+
+    s.push('<text x="'+(M.l-9)+'" y="'+(y+4).toFixed(1)+'" text-anchor="end" fill="#7c8691" '+
            'font-family="ui-monospace,Menlo,monospace" font-size="11">'+decadeLabel(e)+'</text>');
   }
   /* x grid + labels */
@@ -762,7 +805,7 @@ function draw(st){
     var lab = sig(au,4) + " AU";
     s.push('<line x1="'+x.toFixed(1)+'" y1="'+M.t+'" x2="'+x.toFixed(1)+'" y2="'+(M.t+ph)+
            '" stroke="#161c23" stroke-width="1"/>');
-    s.push('<text x="'+x.toFixed(1)+'" y="'+(M.t+ph+18)+'" text-anchor="middle" fill="#66707c" '+
+    s.push('<text x="'+x.toFixed(1)+'" y="'+(M.t+ph+18)+'" text-anchor="middle" fill="#7c8691" '+
            'font-family="ui-monospace,Menlo,monospace" font-size="11">'+lab+'</text>');
   }
 
@@ -773,7 +816,7 @@ function draw(st){
       for(var i=0;i<REFS.length;i++) if(REFS[i].v === r) return REFS[i].t; return fmtLen(r);
     })(refV);
     s.push('<line x1="'+M.l+'" y1="'+yr.toFixed(1)+'" x2="'+(M.l+pw)+'" y2="'+yr.toFixed(1)+
-           '" stroke="#66707c" stroke-width="1" stroke-dasharray="5 4"/>');
+           '" stroke="#7c8691" stroke-width="1" stroke-dasharray="5 4"/>');
     s.push('<text x="'+(M.l+pw-6)+'" y="'+(yr-7).toFixed(1)+'" text-anchor="end" fill="#8b95a2" '+
            'font-family="ui-monospace,Menlo,monospace" font-size="11">'+rlab+'</text>');
   }
