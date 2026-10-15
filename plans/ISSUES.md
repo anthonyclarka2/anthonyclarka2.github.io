@@ -350,6 +350,51 @@ scale that is not there.
 
 ---
 
+## Where this stopped
+
+End of the session on the view-proportions work. Tree clean on `dev` at
+`240500c`, 181 tests green:
+
+```
+node --test "tests/**/*.test.js"
+```
+
+Note the tests live in `tests/slide-rule/` and reach back through
+`../../docs/` — they were moved out of `docs/` because that is the directory
+GitHub Pages publishes, and a bare directory is not a directory to a glob.
+The test command is the one in `.github/workflows/pages.yml`.
+
+**Next session, in this order.**
+
+1. **Debug the zoom and the animation across steps.** Deferred by agreement
+   until the views were right. The main view is now a fixed
+   `DETAIL_PX_PER_UNIT` of 1.25 and overflows its panel by 517px at the window
+   width it was last checked at, so the camera's framing and the scroll
+   position have to be looked at together rather than separately: the viewBox
+   pans and the container scrolls, and it is not yet clear the two should move
+   in step or whether the scroll should follow the focus automatically.
+
+2. **The dead band along the bottom of the rule.** Left alone deliberately.
+   `rule669.height` is 376 units but the last row's ink stops at 324, so there
+   is roughly 52 units of blank below it against 14 above. At the new larger
+   scale that asymmetry is visible as a deep empty strip. Trimming it changes
+   the aspect from 2.96 to about 3.30 and every camera framing with it, so it
+   wants to be its own change rather than folded into the zoom work.
+
+3. **I-5**, which needs a reading of the photographs rather than a decision.
+
+4. **The remaining unverified scale work**, all recorded in `SCALES.md`:
+   `LL2`/`LL3` ranges (visible as wrong now the back face can be inspected),
+   the `S`/`T` paired labels, and the end-of-row multiplier captions.
+
+**Worth re-measuring rather than trusting.** Everything about layout was checked
+in a real browser because the DOM stub cannot see any of it. The proportion
+figures — `stretchX = 1.000`, the 517px overflow, 613x207 and 1393x470 — were
+measured at one window width. They are the kind of number that changes with the
+viewport and looks fine until it doesn't.
+
+---
+
 ## Suggested order of work
 
 The first four are done. What is left, in order:
