@@ -62,6 +62,11 @@ h1 .thin{color:var(--ink-3);font-weight:400}
    A two column layout put the entry beside the instrument, which made the eye
    travel sideways for every value read. */
 .stack{display:grid;gap:16px;align-content:start}
+/* Grid items default to min-width:auto and so refuse to shrink below their
+   content. The rule view is deliberately wider than its panel and scrolls
+   inside it; without this the panel is widened to the rule instead, the page
+   grows a scrollbar, and the view never actually scrolls. */
+.stack > *{min-width:0}
 .stack > .panel + .panel{margin-top:0}
 
 .panel{
@@ -69,6 +74,11 @@ h1 .thin{color:var(--ink-3);font-weight:400}
   border:1px solid var(--line);
   border-radius:12px;
   padding:18px 18px 16px;
+  /* Grid items default to min-width:auto and refuse to shrink below their
+     content. The rule view is deliberately wider than its panel and scrolls
+     inside it; without this the panel is widened to the rule instead, the page
+     grows a scrollbar, and the view never actually scrolls. */
+  min-width:0;
 }
 .panel h2{
   font-size:11px;letter-spacing:.14em;text-transform:uppercase;
@@ -224,18 +234,31 @@ strong{color:var(--ink);font-weight:600}
    as the instrument is long and thin. The SVG scales to fit, so the same
    drawing serves a phone and a desktop without a second layout. */
 #rule-panel{padding:14px 14px 12px}
+/* The main view is sized from the rule, not from this container, and is usually
+   WIDER than it. It scrolls sideways rather than being fitted: squeezing a long
+   thin object into a fixed box is what stretches it, and the rule's
+   proportions matter more than its fitting inside a panel. */
 .rule-wrap{
   width:100%;
+  /* A grid item defaults to min-width:auto, which refuses to shrink below the
+     width of its content. Left alone, the 1393px rule widened the whole panel
+     and the page instead of scrolling inside this box, so the rule was never
+     actually scrollable and the page gained a scrollbar of its own. */
+  min-width:0;
   margin:0 -4px;
-  overflow:hidden;
+  overflow-x:auto;
+  overflow-y:hidden;
   border-radius:6px;
   background:var(--slide-edge);
+  /* A scrollbar that only appears over the rule itself. */
+  scrollbar-width:thin;
 }
-/* An SVG with no intrinsic size collapses when height is auto, so the viewBox
-   is the only thing giving it a shape. The rule is long and thin, and its
-   aspect has to be pinned or the graduations come out stretched. */
-#rule{display:block;width:100%;height:auto;aspect-ratio:1320 / 400}
-#minimap{display:block;width:100%;height:54px;background:var(--panel-2);border-radius:5px}
+/* Both views take their width and height as attributes set from the rule's own
+   proportions in app.js. No width:100% and no aspect-ratio here: both of those
+   take the shape away from the rule and hand it to the container, which is what
+   stretched the overview by more than five times across. */
+#rule{display:block;max-width:none}
+#minimap{display:block;max-width:none;background:var(--panel-2);border-radius:5px}
 .minimap-strip{margin-top:8px}
 .minimap-strip h2{margin-bottom:6px}
 

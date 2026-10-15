@@ -11,7 +11,7 @@
 
   const { plan } = window.SlideRulePlan;
   const { createTween } = window.SlideRuleTween;
-  const { camera, easeInOutCubic } = window.SlideRuleCamera;
+  const { camera, easeInOutCubic, fitBox, ruleAspect } = window.SlideRuleCamera;
   const render = window.SlideRuleRender;
   const rule669 = window.SlideRule669;
   const { ParseError } = window.SlideRuleParser;
@@ -51,6 +51,17 @@
    * the labelled ones become readable -- the reason the view zooms at all.
    */
   const CLOSE_FACTOR = 3;
+
+  /* How large each view draws the rule, in screen pixels per rule unit.
+     Both are fixed numbers rather than fractions of the container, which is the
+     whole point: an element sized to the container is stretched to fit it, and
+     the two views were stretched by 1.1x and 5.4x respectively.
+
+     Fixed sizes also let the main view be LARGER than its container. It then
+     overflows to the right and the reader scrolls, rather than the rule being
+     squeezed to whatever width happens to be left over. */
+  const DETAIL_PX_PER_UNIT = 1.25;
+  const OVERVIEW_PX_PER_UNIT = 0.55;
 
   function zoomFor(which, viewport) {
     // Framed against what is DRAWN, not the graduated axis: the caps and the
@@ -137,7 +148,43 @@
     return { width: total, height: rule669.height(face) };
   }
 
+  /**
+   * Size both views from the rule rather than from the container.
+   *
+   * The overview always shows the whole rule, so it is sized to the drawn extent
+   * at its own scale. The main view is sized the same way at a larger scale, and
+   * is allowed to be wider than its container: it overflows to the right and the
+   * reader scrolls, which is what keeps its proportions right instead of having
+   * the rule squeezed to fit.
+   *
+   * Called on load, on a face change, and on a resize, because the rule's height
+   * differs between the faces and the drawn extent is in rule units while the
+   * element is in pixels.
+   */
+  function sizeViews() {
+    const extent = render.drawnExtent(RULE.axisPx);
+    const rule = { width: extent.width, height: rule669.height(face) };
+
+    const detail = fitBox(DETAIL_PX_PER_UNIT, rule);
+    svg.setAttribute('width', detail.width);
+    svg.setAttribute('height', detail.height);
+
+    const mini = fitBox(OVERVIEW_PX_PER_UNIT, rule);
+    const miniSvg = $('minimap');
+    miniSvg.setAttribute('width', mini.width);
+    miniSvg.setAttribute('height', mini.height);
+    // The overview is pinned to the whole drawing, so it always shows every
+    // graduation, both caps and the slide, whatever face is up.
+    miniSvg.setAttribute('viewBox', `${extent.left} 0 ${extent.width} ${rule.height}`);
+
+    return { rule, extent };
+  }
+
   function buildCamera(which, focus) {
+    // The camera has to know the size the main view is ACTUALLY drawn at, not
+    // the size of the container it sits in: the two differ now that the view is
+    // allowed to overflow and be scrolled.
+    sizeViews();
     const viewport = viewportSize();
     // The camera clamps and centres against the span it is given, and the zoom
     // is derived from that same span. They must describe the same thing, or the
@@ -512,8 +559,10 @@
     dragY = null;
   });
 
-  // A resize changes the viewport the camera works in, so the window has to be
-  // recomputed or the rule would stay framed for the old width.
+  // Both views are now a fixed number of pixels per rule unit, so a resize no
+  // longer changes the camera's viewport the way it used to. Kept anyway: it
+  // costs nothing and rebuilds the framing if anything about the layout can
+  // still shift where the view sits.
   window.addEventListener('resize', () => {
     if (!cam) return;
     const focus = tween ? tween.stateAt(currentMs()).cursor : RULE.axisPx / 2;

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { camera, easeInOutCubic } = require('../../docs/slide-rule/camera.js');
+const { camera, easeInOutCubic, fitBox, ruleAspect } = require('../../docs/slide-rule/camera.js');
 
 // Expected values are worked examples with independently known answers (the
 // arithmetic itself), never the clamp expressions the module implements. A test
@@ -233,4 +233,40 @@ test('easing never runs backwards and never leaves the unit interval', () => {
   // Beyond the ends it is pinned, not merely bounded by luck.
   assert.ok(easeInOutCubic(-5) <= 0, 'clamped below');
   assert.ok(easeInOutCubic(5) >= 1, 'clamped above');
+});
+/* ------------------------------------------------------------- element size */
+
+test('a view sized to the rule has the rule\'s proportions', () => {
+  // The distortion being fixed: both views were stretched to whatever box the
+  // page gave them. The overview had preserveAspectRatio="none" and a 54px
+  // height, which forced a 2.96-aspect viewBox into a 16.07-aspect box and
+  // stretched the rule 5.4x across. Sizing the element from the rule instead of
+  // the container is the whole fix.
+  const rule = { width: 1114, height: 376 };
+  const box = fitBox(1, rule);
+  assert.equal(box.width, 1114, 'one pixel per rule unit is the rule in pixels');
+  assert.equal(box.height, 376);
+  assert.equal(box.width / box.height, 1114 / 376, 'the aspect is the rule\'s');
+});
+
+test('the element scales linearly with the pixels chosen per rule unit', () => {
+  const rule = { width: 1114, height: 376 };
+  for (const per of [0.5, 1, 1.5, 2]) {
+    const box = fitBox(per, rule);
+    assert.ok(Math.abs(box.width - 1114 * per) < 1e-9, `width at ${per}`);
+    assert.ok(Math.abs(box.height - 376 * per) < 1e-9, `height at ${per}`);
+    // One scale factor, both axes. This is the property that keeps the
+    // graduations the same distance apart across and down the rule.
+    assert.ok(Math.abs(box.width / box.height - ruleAspect(rule)) < 1e-12,
+      `aspect holds at ${per} pixels per unit`);
+  }
+});
+
+test('the rule\'s aspect is its own, not the viewport\'s', () => {
+  // Derived from the rule, so a viewport of any ratio leaves it alone. Pinning
+  // the height to the rule rather than deriving it from the viewport is what
+  // keeps eleven rows from being cropped or banded.
+  const rule = { width: 1114, height: 376 };
+  assert.ok(Math.abs(ruleAspect(rule) - 2.9627659574468085) < 1e-12);
+  assert.ok(ruleAspect({ width: 200, height: 100 }) === 2);
 });

@@ -147,5 +147,40 @@
     return make(defaultFocus, zoom);
   }
 
-  return { camera, easeInOutCubic };
+  /**
+   * The rule's proportions: width for every one of height.
+   *
+   * A property of the instrument, never of the viewport it happens to be drawn
+   * in. Every window this module produces already has this aspect -- that is
+   * what `make` guarantees when it derives a window's height from its width --
+   * so an element sized to the same aspect matches at every zoom, including
+   * zooms nothing has run yet.
+   *
+   * @param {{width:number,height:number}} rule the whole rule, in rule units
+   * @returns {number} width divided by height
+   */
+  function ruleAspect(rule) {
+    return rule.width / rule.height;
+  }
+
+  /**
+   * The size an element must be drawn at to show the rule undistorted.
+   *
+   * Both views used to be stretched to whatever box the page handed them, which
+   * is where the distortion came from: the overview was 5.4x too wide and the
+   * main view 1.1x even when showing the whole rule. Deriving the element from
+   * the rule instead of the container means its proportions are correct by
+   * construction, and that it can overflow its container rather than being
+   * squeezed to fit it -- an element narrower than the rule would have to
+   * letterbox or squash to stay inside, and both are wrong.
+   *
+   * @param {number} pxPerUnit screen pixels for one rule unit
+   * @param {{width:number,height:number}} rule the whole rule, in rule units
+   * @returns {{width:number,height:number}} the element's size in screen pixels
+   */
+  function fitBox(pxPerUnit, rule) {
+    return { width: rule.width * pxPerUnit, height: rule.height * pxPerUnit };
+  }
+
+  return { camera, easeInOutCubic, ruleAspect, fitBox };
 });
