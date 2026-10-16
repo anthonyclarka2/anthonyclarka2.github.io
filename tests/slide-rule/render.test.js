@@ -545,17 +545,16 @@ test('a graduation is placed where geometry says the scale is graduated', () => 
     render.draw(svg, RULE, { face: 'front' });
 
     // The D row's 2 must sit where geometry puts D 2, which is the same number
-    // the planner aims the cursor at. Labels are drawn as text at the tick's x;
-    // the tick itself is a vertical line at the same position.
-    //
-    // `2` is printed twice on D, and that is the instrument's own convention:
-    // the tenths of the opening interval print their digit alone, so the second
-    // `2` is one and two tenths. The one this test wants is the whole number.
+    // the planner aims the cursor at, and the number printed there must be
+    // anchored the way the instrument prints it: its LAST character starting at
+    // the graduation, so the tick runs up between that character and the ones
+    // before it. Subtracting one character's width from the text's x recovers
+    // the graduation the number belongs to.
     const want = g.posOf('D', 2);
     const row = byId(svg, 'row-D')[0];
     const twos = row.children
       .filter((c) => c.name === 'text' && c.textContent === '2')
-      .map((c) => Number(c.attrs.x));
+      .map((c) => Number(c.attrs.x) - 0.62 * Number(c.attrs['font-size']));
     assert.ok(twos.length >= 1, 'D prints a 2');
     const whole = twos.filter((x) => Math.abs(x - want) < 1);
     assert.equal(whole.length, 1,
@@ -563,6 +562,34 @@ test('a graduation is placed where geometry says the scale is graduated', () => 
     // And the other one is where 1.2 is, which is the convention above.
     assert.ok(twos.some((x) => Math.abs(x - g.posOf('D', 1.2)) < 1),
       'D also prints the tenths digit at 1.2');
+  });
+});
+
+test('a printed number is anchored so its last character starts at its graduation', () => {
+  // Read at 1:1 from the instrument: `.50` comes out `.5` left of the tick and
+  // `0` right of it, `45` comes out with the 4 and the 5 either side, and a
+  // single digit sits wholly to the right. One rule covers all three -- the
+  // string ends one character-width past the tick -- and it is what makes a
+  // number read as belonging to its own graduation rather than sitting near it.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    for (const name of ['C', 'D', 'LL02', 'LL3', 'CI']) {
+      const row = byId(svg, `row-${name}`)[0];
+      for (const text of row.children.filter((c) => c.name === 'text')) {
+        if (text.textContent === name || text.textContent === 'not recovered') continue;
+        assert.equal(text.getAttribute('text-anchor'), 'end',
+          `${name}: a number is anchored by its end`);
+        const tickX = Number(text.attrs.x) - 0.62 * Number(text.attrs['font-size']);
+        // And the graduation it belongs to is one the row actually marks.
+        const xs = row.children
+          .filter((c) => c.attrs.id === 'tick')
+          .map((c) => Number(c.attrs.x1));
+        assert.ok(xs.some((x) => Math.abs(x - tickX) < 0.6),
+          `${name}: "${text.textContent}" is anchored to a tick, nearest difference `
+          + `${Math.min(...xs.map((x) => Math.abs(x - tickX))).toFixed(2)}`);
+      }
+    }
   });
 });
 
@@ -577,7 +604,10 @@ test('a tenth of the opening interval is printed as its own digit', () => {
     const row = byId(svg, 'row-C')[0];
     const labels = row.children
       .filter((c) => c.name === 'text' && c.textContent !== 'C')
-      .map((c) => ({ x: Number(c.attrs.x), s: c.textContent }))
+      .map((c) => ({
+        x: Number(c.attrs.x) - 0.62 * Number(c.attrs['font-size']),
+        s: c.textContent,
+      }))
       .sort((a, b) => a.x - b.x);
 
     const near = (v) => labels.find((l) => Math.abs(l.x - g.posOf('C', v)) < 1);
@@ -723,7 +753,10 @@ test('a reciprocal row prints its numbers falling from ten to one', () => {
     const row = byId(svg, 'row-CI')[0];
     const labels = row.children
       .filter((c) => c.name === 'text' && c.textContent !== 'CI')
-      .map((c) => ({ x: Number(c.attrs.x), s: c.textContent }))
+      .map((c) => ({
+        x: Number(c.attrs.x) - 0.62 * Number(c.attrs['font-size']),
+        s: c.textContent,
+      }))
       .sort((a, b) => a.x - b.x);
 
     assert.equal(labels[0].s, '10', 'the index reads 10');
@@ -793,6 +826,71 @@ test('a row whose graduations are unknown is drawn as a name and nothing else', 
     assert.equal(ticks.length, 0, 'but with no invented graduations');
     assert.ok(texts(srt).includes('SRT'), 'its name is printed');
   });
+});
+
+test('LL02 is graduated exactly as the instrument was read', () => {
+  // Dictated from the instrument, tick by tick, and the reason the regions model
+  // exists. Each of these is a claim about a specific graduation a reader can go
+  // and check against the photograph, so a regression here is a row drawn wrong
+  // rather than merely a row drawn differently.
+  const ll02 = rule669.layout('front').find((r) => r.name === 'LL02');
+  assert.ok(ll02.regions, 'LL02 carries its regions');
+
+  const ticks = render.graduations(g, ll02).slice().sort((a, b) => a.x - b.x);
+  const at = (label) => ticks.find((t) => t.label === label);
+  const between = (a, b) => ticks.filter((t) => t.x > at(a).x && t.x < at(b).x);
+
+  // The row opens on one long tick, then four short ones, and only then the
+  // first number. Its left-hand end is at e^-0.1, which the instrument does not
+  // name: the first number printed is `.90`, one step in.
+  const head = ticks.slice(0, 6);
+  assert.deepEqual(head.map((t) => t.grade), [0, 2, 2, 2, 2, 0],
+    'one long, four short, then the .90 long');
+  assert.equal(head[5].label, '.90', 'and .90 is the first number');
+  assert.ok(Math.abs(head[0].x) < 1e-6, 'the bare tick is the row index');
+
+  // Twenty ticks from .90 to .88, with the fives medium and the tens long.
+  const a = between('.90', '.88');
+  assert.equal(a.length, 19, '19 marks between, so .88 is the twentieth');
+  assert.equal(a[4].grade, 1, 'the fifth is medium');
+  assert.equal(a[9].grade, 0, 'the tenth is long, as long as .90');
+  assert.equal(a[14].grade, 1, 'the fifteenth is medium');
+  assert.equal(a.filter((t) => t.grade === 0).length, 1,
+    'and the only long mark between them is the ten');
+
+  // The same for .86, .84, .82 and .80.
+  for (const [hi, lo] of [['.88', '.86'], ['.86', '.84'], ['.84', '.82'], ['.82', '.80']]) {
+    const span = between(hi, lo);
+    assert.equal(span.length, 19, `${hi} to ${lo} has 19 marks between`);
+    assert.equal(span[4].grade, 1, `${hi} to ${lo}: the fifth is medium`);
+    assert.equal(span[9].grade, 0, `${hi} to ${lo}: the tenth is long`);
+    assert.equal(span[14].grade, 1, `${hi} to ${lo}: the fifteenth is medium`);
+  }
+
+  // Then twenty-five ticks to .75, with every fifth one medium and no long ones
+  // between: from .80 down the instrument counts in fives and prints every
+  // twenty-fifth.
+  const b = between('.80', '.75');
+  assert.equal(b.length, 24, '24 marks between, so .75 is the twenty-fifth');
+  assert.deepEqual([4, 9, 14, 19].map((i) => b[i].grade), [1, 1, 1, 1],
+    'every fifth mark is medium');
+  assert.equal(b.filter((t) => t.grade === 0).length, 0,
+    'and nothing between two numbers is printed long');
+
+  // The pattern continues to the foot of the row.
+  for (const [hi, lo] of [['.75', '.70'], ['.70', '.65'], ['.65', '.60'],
+    ['.60', '.55'], ['.55', '.50'], ['.50', '.45'], ['.45', '.40']]) {
+    const span = between(hi, lo);
+    assert.equal(span.length, 24, `${hi} to ${lo} has 24 marks between`);
+    assert.deepEqual([4, 9, 14, 19].map((i) => span[i].grade), [1, 1, 1, 1],
+      `${hi} to ${lo}: every fifth mark is medium`);
+  }
+
+  // And the numbers are the ones the photographs show, in that order.
+  assert.deepEqual(ticks.filter((t) => t.label).map((t) => t.label),
+    ['.90', '.88', '.86', '.84', '.82', '.80', '.75', '.70', '.65', '.60',
+      '.55', '.50', '.45', '.40', '1/e'],
+    'the numbers LL02 prints, left to right');
 });
 
 /* ---------------------------------------------------------- the cursor */

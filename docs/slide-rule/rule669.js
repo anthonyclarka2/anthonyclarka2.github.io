@@ -104,20 +104,19 @@
    * carry it, and it is the part of the rule most likely to need a second
    * reading, so it is written where it can be corrected in one place.
    *
-   * These were read at 1:1 from the two photographs. LL02's `.90 .88 .86 .84
-   * .82` and `50 45 40`, LL03's `.35 .30 .25 .20 .15` and `.005 .002 .001
-   * .0005 .0002 .0001`, LL2's `1.11 1.15 ... 2 2.5 e`, LL3's `3` through
-   * `20000`, and LL1's `1.01` to `1.1` are all transcribed.
+   * These were read at 1:1 from the two photographs. LL03's `.35 .30 .25 .20
+   * .15` and `.005 .002 .001 .0005 .0002 .0001`, LL2's `1.11 1.15 ... 2 2.5 e`,
+   * LL3's `3` through `20000`, LL01's `.99` to `.90` and LL1's `1.01` to `1.1`
+   * are transcribed. LL03 between `.15` and `.005` is a plausible break-down
+   * rather than a reading, and is the first thing to check when that row is
+   * walked.
    *
-   * Two stretches are NOT transcribed and are the ones to check first when the
-   * rows are walked against the instrument: LL03 between `.15` and `.005`, where
-   * the runs below are a plausible break-down rather than a reading, and LL02
-   * between `.60` and `.40`, where the change from twentieths to fiftieths was
-   * read but the exact value it changes at was not.
+   * LL02 has been walked mark by mark and now carries `regions` instead. See
+   * LL_REGIONS below: that is what the rest of these rows will look like once
+   * they have had the same treatment.
    */
   const LL_MARKS = {
     LL01: [[0.98, 0.91, 0.01]],
-    LL02: [[0.88, 0.60, 0.02], [0.55, 0.40, 0.05]],
     LL03: [[0.35, 0.15, 0.05], [0.14, 0.06, 0.02], [0.055, 0.025, 0.005],
       [0.014, 0.006, 0.002], [0.005, 0.001, 0.001], [0.0005, 0.0001, 0.0001]],
     LL1: [[1.02, 1.10, 0.01]],
@@ -129,21 +128,51 @@
     LL3: [[3, 10, 1], [20, 50, 10], [100, 200, 500, 1000, 2000, 5000, 10000, 20000]],
   };
 
+  /**
+   * The rows that have been walked mark by mark, described the way the
+   * instrument is graduated.
+   *
+   * Each stretch is a run of values with the step they are marked at, and the
+   * steps at which a mark is printed longer: `medium` for the tick a reader
+   * counts in fives at, `long` for the one they count tens at -- which on these
+   * rows is as long as the labelled tick. `label` is the step at which a value is
+   * printed at all.
+   *
+   * LL02, dictated from the instrument and checked against the photograph at
+   * 1:1. The row opens on a long unlabelled tick at e^-0.1; four short ticks
+   * take it to `.90`, whose graduation runs between its last two characters;
+   * from .90 to .80 the subdivision is thousandths with the fives medium and the
+   * tens long, every twentieth labelled; and from .80 down to the row's foot the
+   * subdivision is two-thousandths with every fifth mark medium and every
+   * twenty-fifth labelled. The `.88 .86 .84 .82` the photographs show fall out
+   * of that, and so do the twenty ticks the instrument prints between two of
+   * them.
+   */
+  const LL_REGIONS = {
+    LL02: [
+      { from: 0.904, to: 0.901, step: 0.001 },
+      { from: 0.90, to: 0.80, step: 0.001, medium: 0.005, long: 0.01, label: 0.02 },
+      { from: 0.80, to: 0.37, step: 0.002, medium: 0.01, label: 0.05 },
+    ],
+  };
+
   /*
    * The marks a log-log row prints at its own ends, which are exact natural
-   * logarithms rather than round numbers: `e` at the foot of LL3, `1/e` where
-   * LL02 meets LL03, `.99` at the head of LL01. They are named rather than
-   * computed because the instrument names them: a reader looking for e finds a
-   * printed `e`, not the digits of 2.718.
+   * logarithms rather than round numbers: `e` at the foot of LL3, `1/e` at the
+   * foot of LL02. They are named rather than computed because the instrument
+   * names them: a reader looking for e finds a printed `e`, not the digits of
+   * 2.718.
    *
    * The first of each row's two entries is its LEFT-hand end, because that is
    * the order the marks table above reads in and the order the eye reads the
    * instrument in. On the rows below one the left-hand end is the LARGER value:
-   * those rows run downhill.
+   * those rows run downhill. LL02's left-hand end is not named here because the
+   * instrument does not name it either: the row opens on a bare long tick at
+   * e^-0.1 and the first number it prints is `.90`, one step in.
    */
   const LL_ENDS = {
     LL01: [[Math.exp(-0.01), '.99'], [Math.exp(-0.1), '.90']],
-    LL02: [[Math.exp(-0.1), '.90'], [Math.exp(-1), '1/e']],
+    LL02: [[Math.exp(-1), '1/e']],
     LL03: [[Math.exp(-1), '1/e'], [Math.exp(-10), '.00005']],
     LL1: [[Math.exp(0.01), '1.01']],
     LL2: [[Math.E, 'e']],
@@ -163,7 +192,7 @@
    * the photographs are clear about.
    */
   const FRONT = [
-    { name: 'LL02', label: 'LL02', scale: 'LL02', red: true, marks: LL_MARKS.LL02, ends: LL_ENDS.LL02 },
+    { name: 'LL02', label: 'LL02', scale: 'LL02', red: true, regions: LL_REGIONS.LL02, ends: LL_ENDS.LL02 },
     { name: 'LL03', label: 'LL03', scale: 'LL03', red: true, marks: LL_MARKS.LL03, ends: LL_ENDS.LL03 },
     { name: 'DF', label: 'DF', scale: 'DF' },
     { name: 'CF', label: 'CF', scale: 'CF' },
@@ -405,7 +434,7 @@
 
   return {
     FRONT, BACK, FACES, SLIDE_SCALES, SLIDE_MIDLINE,
-    LL_MARKS, LL_ENDS,
+    LL_MARKS, LL_ENDS, LL_REGIONS,
     ROW_H, IVORY_H, AXIS_W, LEGEND_COL, LEGEND_GAP, END_COL, CAP_L, CAP_R, SEAM,
     layout, slideBand, slideMidline, height, width,
     faceFor, facesFor, faceCanShow, resolveFace,

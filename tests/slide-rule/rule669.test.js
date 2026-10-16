@@ -536,16 +536,23 @@ test('DF is graduated, because the folded construction is known', () => {
   assert.ok(Math.abs(def.range[1] - Math.PI * 10) < 1e-12, 'and its far end is ten pi');
 });
 
-test('the log-log rows carry a list of the marks they print', () => {
-  // These rows are the one kind of scale whose labels are a list rather than a
-  // rule, so the list is data and has to be present for the renderer to draw
-  // them at all. A row with a scale and no marks would come out blank.
+test('the log-log rows carry the marks they print, by one of two descriptions', () => {
+  // LL02 has been walked mark by mark and carries `regions`: stretches of values
+  // with the step they are marked at and the steps printed longer. The rows not
+  // yet walked carry `marks`, a list of the values they label. Either way a row
+  // with a scale and neither would come out blank, so both are checked.
   for (const face of ['front', 'back']) {
     for (const row of rule.layout(face)) {
       if (!/^LL/.test(row.name)) continue;
       assert.equal(g.describe(row.scale).kind, 'log-log', `${row.name} is a log-log row`);
-      assert.ok(Array.isArray(row.marks) && row.marks.length > 0, `${row.name} has marks`);
-      for (const [from, to, step] of row.marks) {
+      const described = (row.regions && row.regions.length)
+        || (row.marks && row.marks.length);
+      assert.ok(described, `${row.name} describes its marks`);
+      for (const region of row.regions || []) {
+        assert.ok(Number.isFinite(region.from) && Number.isFinite(region.to)
+          && region.step > 0, `${row.name} region ${region.from}..${region.to}`);
+      }
+      for (const [from, to, step] of row.marks || []) {
         assert.ok(Number.isFinite(from) && Number.isFinite(to) && step > 0,
           `${row.name} mark run ${from}..${to} step ${step}`);
       }
@@ -563,15 +570,23 @@ test('every log-log mark lies within its own row', () => {
       const [lo, hi] = g.describe(row.scale).range;
       const low = Math.min(lo, hi);
       const high = Math.max(lo, hi);
-      for (const [from, to] of row.marks) {
-        for (const v of [from, to]) {
-          assert.ok(v >= low * (1 - 1e-9) && v <= high * (1 + 1e-9),
-            `${row.name}: mark ${v} is outside its row ${low}..${high}`);
-        }
+      const within = (v, what) => assert.ok(
+        v >= low * (1 - 1e-9) && v <= high * (1 + 1e-9),
+        `${row.name}: ${what} ${v} is outside its row ${low}..${high}`,
+      );
+      // Both ends of each described stretch, and every value a region names as
+      // a step. A stretch that runs past the row's foot would leave marks the
+      // renderer drops without saying so.
+      for (const region of row.regions || []) {
+        within(region.from, 'region start');
+        within(region.to, 'region end');
+      }
+      for (const [from, to] of row.marks || []) {
+        within(from, 'mark');
+        within(to, 'mark');
       }
       for (const [v, text] of row.ends) {
-        assert.ok(v >= low * (1 - 1e-9) && v <= high * (1 + 1e-9),
-          `${row.name}: end mark ${v} is outside its row`);
+        within(v, 'end mark');
         assert.ok(typeof text === 'string' && text.length > 0,
           `${row.name}: end mark has a printed name`);
       }

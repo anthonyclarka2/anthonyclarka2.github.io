@@ -396,7 +396,72 @@
    * graduations carries was not recovered, and inventing round values for them
    * would be worse than an honest fill.
    */
+  /* True when a value sits on a step, within a tolerance that absorbs the
+     floating-point drift of building values as `from + i * step`. */
+  function isMultiple(v, step) {
+    const n = v / step;
+    return Math.abs(n - Math.round(n)) < 1e-6;
+  }
+
+  /**
+   * A log-log row's graduations, described the way the instrument is graduated.
+   *
+   * Walked stretch by stretch at the step the stretch is marked at, with the
+   * marks that the stretch names as longer printed longer. Written this way
+   * because it is how a row is read off the instrument: not "here are the
+   * numbers" but "thousandths here, with the fives medium, up to .90".
+   *
+   * The row's own two ends are added separately, at the exact natural logarithms
+   * the range carries rather than at a round value near them, which is where the
+   * instrument prints them: LL02 opens on a bare long tick at e^-0.1 and its
+   * first printed number is `.90`, one step in.
+   */
+  function regionGraduations(g, def, row, push) {
+    const marks = new Map();
+    const add = (v, grade) => {
+      // Two stretches meet at a shared value, and the row's ends land on values
+      // of their own: keyed by value so a mark is printed once.
+      marks.set(v.toFixed(9), { v, grade });
+    };
+
+    for (const region of row.regions) {
+      const dir = region.to >= region.from ? 1 : -1;
+      const n = Math.round(Math.abs(region.to - region.from) / region.step);
+      // The decimal places the stretch's own labelling needs, which is what the
+      // instrument prints: a row labelled every twentieth reads `.90`, one
+      // labelled every whole number reads `20`.
+      const digits = region.label
+        ? Math.max(0, Math.ceil(-Math.log10(region.label) - 1e-9))
+        : 2;
+      for (let i = 0; i <= n; i++) {
+        const v = region.from + dir * (i * region.step);
+        const labelled = region.label && isMultiple(v, region.label);
+        const grade = labelled ? 0
+          : (region.long && isMultiple(v, region.long)) ? 0
+            : (region.medium && isMultiple(v, region.medium)) ? 1
+              : 2;
+        marks.set(v.toFixed(9), {
+          v,
+          grade,
+          label: labelled ? belowOne(v, digits) : '',
+        });
+      }
+    }
+
+    for (const end of def.range) add(end, 0);
+
+    const named = new Map();
+    for (const [v, text] of row.ends || []) named.set(v.toFixed(9), text);
+
+    for (const mark of marks.values()) {
+      const text = named.get(mark.v.toFixed(9));
+      push(g.posOf(def.name, mark.v), text === undefined ? (mark.label || '') : text, mark.grade);
+    }
+  }
+
   function logLogGraduations(g, def, row, push) {
+    if (row.regions) return regionGraduations(g, def, row, push);
+
     const values = [];
     for (const entry of row.marks || []) {
       // An entry is either a run -- exactly three numbers, from, to and step --
@@ -559,10 +624,16 @@
         // top of the tallest tick. The numbers therefore sit above the ticks
         // rather than among them, which is what keeps a row's subdivisions from
         // running through its own digits.
+        //
+        // The number is anchored so that its LAST CHARACTER begins at the
+        // graduation, which runs up between that character and the ones before
+        // it. That is how the instrument prints these rows, read at 1:1: `.50`
+        // comes out `.5` left of the tick and `0` right of it, `45` comes out
+        // `4` and `5` either side, and a single digit sits wholly to the right.
         const text = el('text', {
-          x: tick.x.toFixed(1),
+          x: (tick.x + grade.font * 0.62).toFixed(1),
           y: (row.y - row.height * rule669.TALLEST_GRADUATION + grade.font * 0.35).toFixed(1),
-          'text-anchor': 'middle',
+          'text-anchor': 'end',
           fill: numberInk,
           'font-size': grade.font,
           opacity: tick.grade === 0 ? 0.95 : 0.7,
