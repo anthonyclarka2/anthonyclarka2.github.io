@@ -398,14 +398,39 @@ The test command is the one in `.github/workflows/pages.yml`.
   past ten, and reads roots with the cursor on A or K. Multiplication, division,
   powers and roots now work for operands the old four-decade model refused.
 
+**The walk, which is the current work.** Rows are being read off the instrument
+one at a time and encoded as `regions` (how finely a stretch is marked, and which
+of its marks are printed longer) plus `marks` (the numbers it prints). Grade and
+number are independent — LL03 prints `.005` on a medium tick and `.0005` on a
+long one — so neither is derived from the other.
+
+| row | state |
+| --- | --- |
+| LL02 | walked, tick for tick |
+| LL03 | walked, tick for tick |
+| CF, DF | walked, and mirror images of each other |
+| LL3, LL2, LL01, LL1 | numbers read from the photographs; marks between them are a uniform comb, not a reading |
+| CIF, CI, C, D | numbers and spacing generated from C's break-down; never walked |
+| L, K, A, B | generated; L read as `.0 .1 … .9 1` |
+| T, S | generated: whole degrees, thinned; never walked |
+| SRT | not recovered at all, drawn as a name only |
+| DI | generated, and paired with D |
+
+Structural facts the walk has established, which the code now carries: a row's
+printing can fall on either side of its baseline (`mirror`, CF alone so far); a
+number can be centred on its tick or anchored by its last character (`numbers`);
+a number can be printed smaller than its row's others (`small`); a row's ends can
+be graded and named independently of its stretches (`ends`); and a stretch can
+name individual longer marks that fall on no step (`longAt`, which is how CF's 25
+is described).
+
+**Still not drawn at all:** the `S`/`T` complement pairs (`84|6`, `83|7`) and
+every row's end-of-row range caption.
+
 **Next session, in this order.**
 
-1. **Walk the rows against the instrument, one at a time**, with the photographs
-   open. This is the thing the user asked for and the reason for all of the
-   above. The rows most worth checking are listed under "Unverified" in
-   `plans/SCALES.md`; LL03's middle and LL02's `.60`-to-`.40` stretch are the two
-   places where the marks table is a reconstruction rather than a reading, and
-   `SRT` is still not recovered at all.
+1. **Carry on walking the rows.** `LL3` and `LL2` are the next with real
+   content to check, then the C family, `L`/`K`/`A`/`B`, and the trig rows.
 
 2. **Debug the zoom and the animation across steps.** The main view is a fixed
    `DETAIL_PX_PER_UNIT` of 1.25 and so is 2532px wide against a panel of about
