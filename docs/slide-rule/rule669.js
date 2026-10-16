@@ -205,9 +205,10 @@
   const LL_ENDS = {
     LL01: [[Math.exp(-0.01), '.99'], [Math.exp(-0.1), '.90']],
     LL02: [[Math.exp(-1), '1/e']],
-    // The row opens on a MEDIUM tick carrying the printed name, not a long one:
-    // read off the instrument while walking the row.
-    LL03: [[Math.exp(-1), '1/e', 1], [Math.exp(-10), '.00005']],
+    // The row opens on a MEDIUM tick carrying the printed name, not a long one.
+    // Its foot carries no name at all: the last number the instrument prints on
+    // this row is `.0001`, and the long tick past it is bare.
+    LL03: [[Math.exp(-1), '1/e', 1]],
     LL1: [[Math.exp(0.01), '1.01']],
     LL2: [[Math.E, 'e']],
     LL3: [[Math.E, 'e']],

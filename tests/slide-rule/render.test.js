@@ -990,16 +990,18 @@ test('LL03 is graduated exactly as the instrument was read', () => {
   assert.equal(next2[4].grade, 1, 'the fifth is medium');
   assert.equal(at('.0001').grade, 0, '.0001 sits on a long tick');
 
-  // The foot: four short, one medium, and the named long tick that ends the row.
+  // The foot: four short, one medium, and a bare long tick to end the row. The
+  // last number the instrument prints on this row is `.0001`.
   const tail = ticks.filter((t) => t.x > at('.0001').x);
   assert.deepEqual(tail.map((t) => t.grade), [2, 2, 2, 2, 1, 0],
     'four short, one medium, then the long tick at the row foot');
-  assert.equal(tail[5].label, '.00005', 'which carries the last printed number');
   assert.ok(Math.abs(tail[5].x - g.axisPx) < 1e-6, 'and is the row foot itself');
+  assert.deepEqual(tail.map((t) => t.label).filter(Boolean), [],
+    'nothing past .0001 is printed');
 
   assert.deepEqual(ticks.filter((t) => t.label).map((t) => t.label),
     ['1/e', '.35', '.30', '.25', '.20', '.15', '.10', '.05', '.04', '.03', '.02',
-      '.01', '.005', '.002', '.001', '.0005', '.0002', '.0001', '.00005'],
+      '.01', '.005', '.002', '.001', '.0005', '.0002', '.0001'],
     'the numbers LL03 prints, left to right');
 });
 
