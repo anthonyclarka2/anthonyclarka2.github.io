@@ -16,7 +16,12 @@
   const rule669 = window.SlideRule669;
   const { ParseError } = window.SlideRuleParser;
 
-  const RULE = { axisPx: 1000, decades: 4 };
+  /* The rule as the geometry module wants it: one decade, and an axis the length
+     of the graduated stock in rule units. Taking the axis from rule669 rather
+     than choosing a round number means the drawing, the camera and the planner
+     all measure the same rule -- the instrument's own proportions, not a
+     convenient 1000. */
+  const RULE = { axisPx: rule669.AXIS_W, decades: 1 };
 
   const $ = (id) => document.getElementById(id);
   const svg = $('rule');
@@ -59,7 +64,14 @@
 
      Fixed sizes also let the main view be LARGER than its container. It then
      overflows to the right and the reader scrolls, rather than the rule being
-     squeezed to whatever width happens to be left over. */
+     squeezed to whatever width happens to be left over.
+
+     The overview is the exception, and deliberately so: its whole job is to show
+     the entire instrument at once, so it takes the smaller of this figure and
+     whatever the container can hold. Shown at a fixed size on a phone it would
+     overflow exactly like the main view, and an overview you have to scroll is
+     not an overview. Its height follows from the rule's own proportions either
+     way, so narrowing it cannot distort it. */
   const DETAIL_PX_PER_UNIT = 1.25;
   const OVERVIEW_PX_PER_UNIT = 0.55;
 
@@ -116,10 +128,9 @@
       case 'divide': return ['C', 'D'];
       case 'power': return ['K', 'D'];
       case 'root': return ['A', 'D'];
-      case 'sin': case 'cos': return ['S', 'CI'];
-      case 'tan': return ['T', 'CI'];
-      case 'ln': return ['Ln', 'D'];
-      case 'log10': case 'log': return ['C', 'D'];
+      case 'sin': case 'cos': return ['S', 'D'];
+      case 'tan': return ['T', 'D'];
+      case 'ln': case 'log10': case 'log': return ['L', 'D'];
       default: return [];
     }
   }
@@ -144,8 +155,8 @@
     const w = svg.clientWidth;
     const h = svg.clientHeight;
     if (w > 0 && h > 0) return { width: w, height: h };
-    const total = RULE.axisPx + render.OVERHANG * 2;
-    return { width: total, height: rule669.height(face) };
+    const extent = render.drawnExtent(RULE.axisPx);
+    return { width: extent.width, height: rule669.height() };
   }
 
   /**
@@ -163,14 +174,20 @@
    */
   function sizeViews() {
     const extent = render.drawnExtent(RULE.axisPx);
-    const rule = { width: extent.width, height: rule669.height(face) };
+    const rule = { width: extent.width, height: rule669.height() };
 
     const detail = fitBox(DETAIL_PX_PER_UNIT, rule);
     svg.setAttribute('width', detail.width);
     svg.setAttribute('height', detail.height);
 
-    const mini = fitBox(OVERVIEW_PX_PER_UNIT, rule);
+    // The overview takes whatever width the panel can actually give it, capped at
+    // its own preferred scale. Its height comes from the rule, so this cannot
+    // stretch it out of proportion -- it only makes the whole instrument fit.
     const miniSvg = $('minimap');
+    const room = (miniSvg.parentElement && miniSvg.parentElement.clientWidth)
+      || window.innerWidth || extent.width;
+    const pxPerUnit = Math.min(OVERVIEW_PX_PER_UNIT, room / extent.width);
+    const mini = fitBox(pxPerUnit, rule);
     miniSvg.setAttribute('width', mini.width);
     miniSvg.setAttribute('height', mini.height);
     // The overview is pinned to the whole drawing, so it always shows every
@@ -195,7 +212,7 @@
     // origin here keeps the camera's arithmetic intact while the viewBox still
     // matches what the renderer drew.
     cam = camera({
-      rule: { width: extent.width, height: rule669.height(face) },
+      rule: { width: extent.width, height: rule669.height() },
       viewport,
       zoom: zoomFor(which || 'overview', viewport),
     });

@@ -1,192 +1,208 @@
-# Scale reference: K&E 669
+# Scale reference: K&E 4181-3
 
-Read from the two photographs of the 10-inch K&E 669 log-log rule (front and
-back). This is a reference sheet, not code. `geometry.js` implements the rows
-that can be derived exactly; the rest are recorded here with their ambiguity
-spelled out, because knowing what we do not know is part of the deliverable.
+The instrument is a 10-inch K&E 4181-3 Log Log Duplex Decitrig. Everything below
+was read at 1:1 from high-resolution photographs of the instrument — two of the
+assembled rule, one for each face (7859x1356 and 7786x1305) — and checked
+against the published scale-set diagrams for the model
+(https://mccoys-kecatalogs.com/KECollection/4081-3/ke4181-3_s5.htm). This is a
+reference sheet, not code: it records what is known, names what is not, and
+fills nothing in by inference.
 
-## What the rule is
+The instrument is not a "K&E 669". An earlier version of this sheet called it
+that. `669` and `352669` are serial numbers stamped on the instrument. The same
+earlier version had the two faces swapped and several of the scale descriptions
+wrong; the corrections are listed near the end, so the mistakes are not
+repeated.
 
-Two-sided, ivory stock, aluminium end caps with fixing screws at each end, and a
-clear glass cursor with a metal surround and four corner screws. Both
-photographs show the same rule from opposite faces, so the scale lists below are
-complementary rather than two different instruments.
+## The two faces
 
-The stock is a logarithmic axis. Every ordinary scale on it is a graduation of
-that one axis, which is why the whole geometry reduces to `pos(v) = log10(v)`.
+Both faces are the same instrument seen from opposite sides, and both are built
+from three pieces: the fixed stock above, the sliding bar across the middle, and
+the fixed stock below. `stock` below means the fixed part and `slide` the moving
+bar. The seam above and below the slide is a *gap between two pieces of
+material*, not a printed line.
 
-Each face is built in three bands: fixed scales above, the slide across the
-middle, fixed scales below. The slide carries the second reading of each pair.
+**Front face** — ten rows:
 
-## Front face
+```
+  LL02     stock
+  LL03     stock
+  DF       stock
+  ---------------- upper boundary of the slide ----------------
+  CF       slide
+  CIF      slide
+  -------- horizontal line printed across the slide --------
+  CI       slide
+  C        slide
+  ---------------- lower boundary of the slide ----------------
+  D        stock
+  LL3      stock
+  LL2      stock
+```
 
-Top (fixed): `LL01`, `L`, `K`, `A`
-Slide: `CF`, `CIF`, `CI`, `C`
-Bottom (fixed): `D`, `DI`, `LL1`
+**Back face** — eleven rows:
 
-| Row | Name | Notes |
+```
+  LL01     stock
+  L        stock
+  K        stock
+  A        stock
+  ---------------- upper boundary of the slide ----------------
+  B        slide
+  -------- horizontal line printed across the slide --------
+  T        slide
+  SRT      slide
+  S        slide
+  ---------------- lower boundary of the slide ----------------
+  D        stock
+  DI       stock
+  LL1      stock
+```
+
+Each face has a horizontal line printed across its slide, and the two lines are
+not in the same place. The front's falls between `CIF` and `CI`, dividing its
+four sliding rows two and two. The back's falls between `B` and `T`, dividing
+its four one and three. Only the front divides exactly in two.
+
+The back carries one row more than the front — eleven against ten — and the two
+faces are the same physical height cap to cap, so the back's rows are shorter.
+Measured row pitch: about 99 px on the front against 88 to 91 px on the back,
+the 10:11 ratio the row counts predict.
+
+`D` is printed on both faces. Every other row name appears on one face only.
+
+## Colours
+
+A row's numbers are printed in red or black. The row's name, in the left-hand
+legend column, is printed in black on every row of both faces; the red/black
+distinction applies to the numbers alone.
+
+| Face | Numbers in red | Numbers in black |
 | --- | --- | --- |
-| 1 | `LL01` | Log-log, one decade of small ratios. Red labels .91-.98 |
-| 2 | `L` | The main log scale, 1-10-100-1000-10000 |
-| 3 | `K` | Cube scale |
-| 4 | `A` | Square scale |
-| 5 | `CF` | "Cube of" scale, on the slide, with the pi marks |
-| 6 | `CIF` | Reciprocal of CF, on the slide |
-| 7 | `CI` | Reciprocal scale, on the slide |
-| 8 | `C` | Second log scale, on the slide; C against D multiplies |
-| 9 | `D` | Third log scale, fixed |
-| 10 | `DI` | Reciprocal of D, fixed |
-| 11 | `LL1` | Log-log detail at the high end, 1.01-1.1 |
+| Front | `LL02`, `LL03`, `CIF`, `CI` | `DF`, `CF`, `C`, `D`, `LL3`, `LL2` |
+| Back | `LL01`, `T`, `S`, `DI` | `L`, `K`, `A`, `B`, `SRT`, `D`, `LL1` |
 
-> **Correction.** This list was first read from the photographs, which gave nine
-> rows: `CIF` was taken as one row and `DI` was missed entirely. The scale list
-> supplied for the instrument has eleven. The photograph reading was wrong, not
-> the rule.
+## The graduated length
 
-## Back face
+Every row's graduations span the full graduated length of the rule. They all
+begin at the same left index and end at the same right-hand end.
 
-Top (fixed): `LL02`, `LL03`, `DF`
-Slide: `B`, `T`, `SRT`, `S`
-Bottom (fixed): `D`, `LL3`, `LL2`
+Measured on the front face at 1:1: graduated length about 5895 px against a row
+pitch of about 99 px, so the graduated length is about 59.5 row-heights. The
+ivory body measures about 6991 x 1004 px, an aspect of about 6.96:1, and about
+7.72:1 measured cap to cap.
 
-| Row | Name | Notes |
+The body is laid out left to right as roughly 4.4 row-heights of legend column,
+then the 59.5 row-heights of graduations, then 6.6 row-heights of blank ivory
+carrying the end-of-row captions and the maker's mark.
+
+Every ordinary scale is a graduation of the one logarithmic axis. The rows
+differ in how many cycles of that axis they carry in the one graduated length,
+and in the direction they run. This replaces an earlier and now-disproven model
+in which the whole stock was treated as one four-decade axis.
+
+## How each row is graduated
+
+| Row(s) | The row's rule | Position of a value `v` along the length |
 | --- | --- | --- |
-| 1 | `LL02` | Log-log, second decade, red labels .91-.98 |
-| 2 | `LL03` | Log-log third decade, red, .2 through 2/3 |
-| 3 | `DF` | Repeating-decimal / pitch scale, pi marked |
-| 4 | `B` | Cube scale, on the slide, with 2 and 3pi marks |
-| 5 | `T` | Tangent, on the slide. Red paired labels |
-| 6 | `SRT` | Small-angle sine/tangent/tangent-cotangent, on the slide |
-| 7 | `S` | Sine, on the slide. Red paired labels |
-| 8 | `D` | Log scale, fixed |
-| 9 | `LL3` | Log-log, large values, red, 6 through 20000 |
-| 10 | `LL2` | Log-log detail, 1.01-1.1 region |
+| `C`, `D` | one decade of `log10(v)` | `log10(v)` of the length |
+| `A`, `B` | two decades of `log10(v)` | `log10(v) / 2`, so `1` to `100` fills the rule twice over |
+| `K` | three decades of `log10(v)` | `log10(v) / 3` |
+| `L` | linear, `0` to `1` | `v` itself; the `log10` of a `1`-to-`10` reading spans exactly `0` to `1` |
+| `CF`, `DF` | one decade, folded at pi | `(log10(v) - log10(pi))` taken modulo 1 |
+| `CIF` | the folded reciprocal of `CF` | `(-log10(v) - log10(pi))` taken modulo 1 |
+| `CI`, `DI` | reciprocal, drawn descending | `10` at the left index, down to `1` at the right-hand end |
+| `LL01`, `LL02`, `LL03`, `LL1`, `LL2`, `LL3` | one decade of `log10(\|ln v\|)` each | spans the full length |
+| `S` | sine of an angle | `log10(sin θ) + 1` |
+| `T` | tangent of an angle | `log10(tan θ) + 1` |
+| `SRT` | small angles | not yet recovered |
 
-## Verified derivable
+Notes:
 
-These follow from the one log axis and need no interpretation:
-
-- `L`, `C`, `D` — position `log10(v) * dpx`
-- `K`, `B` — cube scales, position `3 * log10(v) * dpx`
-- `A` — square scale, position `2 * log10(v) * dpx`
-- `CF`, `CIF` — cube and reciprocal-cube
-- `S`, `T` — projected, at `-log10(sin t)` and `-log10(tan t)`
-
-`K`, `B`, `CF` and `CIF` are the same graduation as one another, read against
-different partners. Drawing them as separate rows with their own labels is what
-the photographs show, and it is what makes the rule teachable.
+- `A` is the square scale: the `D` reading under an `A` graduation of `v` is
+  `sqrt(v)`.
+- `S` runs from about 5.74 degrees (`sin = 0.1`) at the left index up to 90
+  degrees (`sin = 1`) at the right-hand end. The sine of an angle is read on
+  the `D` scale as ten times its value.
+- `T` runs from about 5.71 degrees (`tan = 0.1`) at the left index up to 45
+  degrees (`tan = 1`) at the right-hand end.
+- On `CF` and `DF` the photographs show the labels in the order `4 5 6 7 8 9`
+  and then `1 2 3`, with a pi mark at *both* ends of the row: pi at 0.00 and
+  10 pi wrapping to the right-hand end at 1.00. Confirmed at three separate
+  points on the photograph.
+- On `CIF` the photographs show the row opening at about 3.18, then
+  `2 1 9 8 7 6 5 4`, ending at about 3.18 again.
 
 ## The log-log rows
 
-`LL1`, `LL01`, `LL2`, `LL02` and `LL3` are not logarithmic in their value. Each
-is graduated in the logarithm of the **excess over one** -- `log(v - 1)` above
-one, `log(1 - v)` below.
+Each of the six log-log rows is exactly one decade of `log10(|ln v|)`, spanning
+the full graduated length. Each carries its own natural-logarithm range as a
+caption printed at the right-hand end of the row:
 
-The construction is confirmed by the arithmetic rather than assumed. `LL1` runs
-1.01 to 1.1, so its excess runs 0.01 to 0.1, which is exactly one decade of
-log10. Every LL row fits the rule for the same reason: its span is the log of
-max excess over min excess, and each of them is one decade.
-
-| Row | Reads | Excess | Labels |
+| Row | Caption | Values | Sense |
 | --- | --- | --- | --- |
-| `LL01` | below one | 0.01 to 0.1 | `.99 .98 … .90` |
-| `LL1` | above one | 0.01 to 0.1 | `1.01 1.02 … 1.10` |
-| `LL02` | above one | 0.1 to 1 | `1.10 1.20 … 2` |
-| `LL2` | above one | 0.1 to 1 | `1.10 1.20 … 2` |
-| `LL3` | above one | 1 to 10 | `2 3 4 … 11` |
+| `LL01` | `-0.01 to -0.1` | `e^-0.01` (0.990) down to `e^-0.1` (0.905) | descends left to right |
+| `LL02` | `-0.1 to -1.0` | `e^-0.1` (0.905) down to `e^-1` (0.368), with `1/e` marked at the far end | descends left to right |
+| `LL03` | `-1.0 to -10.0` | `e^-1` (0.368) down to `e^-10` (0.0000454) | descends left to right |
+| `LL1` | `0.01 to 0.1` | `e^0.01` (1.0100) up to `e^0.1` (1.1052) | ascends left to right |
+| `LL2` | `0.1 to 1.0` | `e^0.1` (1.1052) up to `e` (2.718), with `e` marked at the far end | ascends left to right |
+| `LL3` | `1.0 to 10.0` | `e` (2.718) up to `e^10` (22026): labelled `e`, then `3`, and at the far end `200`, `500`, `1000`, `2000`, `5000`, `10000`, `20000` | ascends left to right |
 
-This is what the rows are for. On an ordinary log scale 1.01 sits a single pixel
-from 1 and is unreadable; the log-log rows spend a whole decade resolving
-exactly that region. Drawing them as ordinary log scales -- which is what
-happened first -- printed `1 10 100 1000` on a row that reads 1.01 to 1.1, which
-is not a crowded version of the right answer but a different and wrong one.
+An earlier reading took these rows to be graduated on the *excess over one* —
+`log10(v - 1)` above one and `log10(1 - v)` below. That model is provably wrong
+for the large rows: it cannot place `LL3`'s `20000` label on a one-decade row
+at all, whereas `log10(ln v)` puts it at 99.6% along the row, which is where
+the photograph shows it. The excess model is a good approximation only for the
+rows close to one.
 
-## Graduations
+## The paired labels on `S` and `T`
 
-Every row carries three classes of mark, longest to shortest:
+Both `S` and `T` carry stacked pairs at the same graduation: a red number over
+a black number, written here as `84|6` — red `84` over black `6`. These are
+the complement pairs. The black number is the angle whose sine (on `S`) or
+tangent (on `T`) the graduation reads; the red number is its complement.
 
-| Class | Carries | Length |
-| --- | --- | --- |
-| labelled | the printed number | 0.62 of the row |
-| middle | a graduation between two labels | 0.40 |
-| fine | the half, between two labels | 0.24 |
+`sin 6` and `tan 6` differ by about 0.5%, so the `84|6` pair sits at almost
+exactly the same place on both rows, which is what the photograph shows.
 
-The hierarchy is what makes a scale readable: the long ticks are the landmarks a
-reader aims the cursor at, and the short ones fill in between. Drawn at one
-length the row is a comb.
+Reproducing the pairs is not yet implemented.
 
-Subdivision beyond the halves is **not derivable from the photographs**. A real
-log-log rule of this family subdivides the first decade far more finely than the
-later ones, tapering so that the tick density stays even along the rule; that is
-the "Deci-Log" idea behind the name. The photographs do not resolve enough minor
-ticks to recover the taper, so the implementation marks every decade equally at
-the halves and does not claim the taper. Every graduation keeps its tick; only
-the printed numbers thin out where they would collide, so the scale still shows
-where each mark is.
+## What the first pass got wrong
 
-## What the photographs settle
+Recorded so the mistakes are not repeated:
 
-Read off the high-resolution images rather than inferred:
+- **The two faces were swapped.** The first pass put `LL01`, `L`, `K`, `A`
+  above the slide and `DI`, `LL1` below it on the *front*; those six belong to
+  the back. It gave the back the front's `LL02`, `LL03` and `DF` above the
+  slide and `LL3` and `LL2` below it. (`D` is printed on both faces, so it was
+  right either way.) The sliding rows were right on both faces. The row counts
+  went with the swap: the front has ten rows and the back eleven, not the
+  reverse.
+- **The log-log rows are not on the excess over one.** They are one decade of
+  `log10(|ln v|)` each. The excess construction fits the rows near one
+  approximately, which is what made it plausible, but it cannot fit the large
+  rows at all.
+- **`B` and `CF` are not cube scales.** `B` carries two decades, the same as
+  `A`; `K` is the three-decade cube scale. `CF` is `C` folded at pi.
+- **`CI` and `DI` are one descending pass**, `10` at the left index down to
+  `1` at the right, not a run of mantissas repeated across the rule.
+- **The legends are not coloured.** Every row's name, in the left-hand column,
+  is black on both faces. Only the numbers are red or black.
+- **The name.** The instrument is a K&E 4181-3; `669` and `352669` are serial
+  numbers stamped on it.
 
-- **Where each scale starts.** Every scale begins at the same vertical line: the
-  `1` of `L`, `K`, `A`, `C` and `D` all align, and the reciprocal rows begin
-  there too. There is no margin to the left of the index.
-- **Legend placement.** Each row's name is printed to the left of that line,
-  clearing the first graduation by two to three characters.
-- **Colour.** Front: `LL01`, `CIF`, `CI`, `DI` red; `L`, `K`, `A`, `CF`, `C`,
-  `D`, `LL1` black. Back: `LL02`, `LL03`, `T`, `S` red; `DF`, `B`, `SRT`, `D`,
-  `LL3`, `LL2` black. The legends are printed in their row's colour.
-- **Reciprocal rows.** `CI` and `DI` are printed `9 8 7 6 5 4 3 2 1` and then
-  `9 8 7 6 5 4 3 2 1` again, each group one decade further along — the
-  mantissa, with the `1` marking the decade. They run `9` to `1` and then `0.9`
-  to `0.01` and so on across the whole rule.
-- **`S` and `T` carry stacked pairs.** `79/11`, `78/12`, `75/25`, `65/25`,
-  `50/40`: the second figure is the complement to ninety, so each graduation
-  prints the angle and its complement. On `S` that is sine against its
-  cosecant; on `T`, tangent against its cotangent.
+## Not yet recovered
 
-## Not derivable from the photographs
+Recorded so that nothing is filled in silently:
 
-Recorded so the implementation does not quietly invent them:
-
-- **Which degrees carry a pair on `S` and `T`.** That each graduation prints the
-  angle and its complement is clear. Which of the ninety are printed as pairs and
-  which carry a single figure is legible only in part, and guessing the set would
-  put numbers on the rule that are not there. Not yet implemented.
-- **The end-of-row captions.** Every row carries a multiplier range at its right
-  end — `-.001 to -.01`, `0.01 to 10`, `10 to 100`, `-.01 to -.1`, `0.001 to
-  01`, `01 to 1.0`. These are readable but not transcribed exactly, and a
-  caption that states the wrong multiplier is worse than none. Not yet
+- **`SRT`'s graduations.** The row is on the back face's slide and is
+  labelled, but its graduation has not been recovered from the photographs.
+  Nothing about it is claimed here.
+- **The subdivision density of `LL03` and `LL02`.** The log-log construction
+  is settled, but which intermediate values these two rows print, and how
+  finely, has not been read off the instrument.
+- **The `S`/`T` paired labels.** Which graduations carry a pair rather than a
+  single figure has not been established, and reproducing the pairs is not yet
   implemented.
-- **`LL02`/`LL03` subdivision density.** The construction of the log-log rows is
-  derived (see above), but which round values each prints is a printing
-  decision the photographs settle only loosely. `LL02` is drawn as a copy of
-  `LL2` and `LL03` as a copy of `LL3`, which follows the naming but is not
-  confirmed against the instrument.
-- **`SRT` graduation.** Its scale is visible and labelled 0.6 to 1, but its
-  relationship to `S` and `T` is not established here. It is deferred.
-- **`DF`.** The pi marks are clear; the scale's exact rule is not.
-
-## Consequences for the app
-
-- **The rule has a CI scale**, on the slide above C. So sine is read the same
-  way as on a Deci-Log: under an S graduation, D shows the cosecant, and the CI
-  graduation shows the sine. This finding survives the correction above.
-- `A` gives squares and square roots, which is the main way to raise to a power
-  on this rule rather than repeated multiplication.
-- `DI` reciprocates against `D` in the same way `CI` does against `C`, which
-  makes reciprocals a direct read rather than a division.
-- Eleven rows on the front face and ten on the back is dense. This is the
-  constraint that drove the zoomed main view and the minimap.
-
-## What the photographs got wrong
-
-Recorded so the mistake is not repeated:
-
-- The front face has **eleven** rows, not nine. `CIF` and `CI` are two separate
-  rows, and `DI` was missed entirely between `D` and `LL1`.
-- The face is organised in **three bands** — fixed, slide, fixed — which is not
-  visible from the photographs alone because the slide's scales are printed
-  directly onto the sliding bar. Reading the rows top to bottom without knowing
-  which piece each row is printed on led to `L` being marked as sliding when it
-  is fixed.
+- **The end-of-row captions.** The six log-log captions are transcribed above;
+  the captions on the other rows have not been read. None of them is drawn yet.

@@ -7,7 +7,7 @@ const render = require('../../docs/slide-rule/render.js');
 const rule669 = require('../../docs/slide-rule/rule669.js');
 const { geometry } = require('../../docs/slide-rule/geometry.js');
 
-const RULE = { axisPx: 1000, decades: 4 };
+const RULE = { axisPx: rule669.AXIS_W, decades: 1 };
 const g = geometry(RULE);
 
 /**
@@ -122,23 +122,26 @@ test('a graduation is visible: it has length, weight and contrast', () => {
 test('a log row carries graduations between its labels, as the instrument does', () => {
   // One tick per label makes the rule look like a row of numbers. A log scale is
   // subdivided well past the values it names: the labels are the landmarks, the
-  // graduations are the scale. Each decade takes a middle graduation too, so a
-  // reader can interpolate between two printed numbers.
+  // graduations are the scale. D is the busiest row on the rule -- hundredths
+  // from 1 to 2, fiftieths from 2 to 4, twentieths above -- so it is the row to
+  // count.
   withStubDom(() => {
     const svg = stubNode('svg');
     render.draw(svg, RULE, { face: 'front' });
-    const row = byId(svg, 'row-L')[0];
+    const row = byId(svg, 'row-D')[0];
     const ticks = row.children.filter((c) => c.getAttribute('id') === 'tick');
     // Grades 0 and 1 carry a printed number; grade 2 is the unlabelled
     // subdivision between them.
-    const labelled = ticks.filter((c) => c.getAttribute('data-grade') !== '2').length;
-    assert.ok(ticks.length > 0, 'L is graduated');
-    assert.ok(labelled > 0, 'L has labelled graduations');
+    const labelled = ticks.filter((c) => c.getAttribute('data-grade') === '0').length;
+    assert.ok(ticks.length > 0, 'D is graduated');
+    assert.ok(labelled > 0, 'D has labelled graduations');
 
-    // Four decades name 36 values; the row must carry substantially more marks
+    // The values D names between 1 and 10 are ten whole numbers and the nine
+    // tenths below 2 -- nineteen labels -- and the row must carry far more marks
     // than that, or the numbers float free of a scale.
-    assert.ok(ticks.length >= labelled * 1.5,
-      `L has ${ticks.length} graduations for ${labelled} labels, too sparse`);
+    assert.ok(labelled >= 19, `D labels ${labelled} values, expected at least 19`);
+    assert.ok(ticks.length >= labelled * 5,
+      `D has ${ticks.length} graduations for ${labelled} labels, too sparse`);
   });
 });
 
@@ -174,14 +177,20 @@ test('the middle graduation of each decade is shorter than the one it sits betwe
   withStubDom(() => {
     const svg = stubNode('svg');
     render.draw(svg, RULE, { face: 'front' });
-    const row = byId(svg, 'row-L')[0];
+    const row = byId(svg, 'row-D')[0];
     const lens = ['0', '1', '2'].map((grade) => row.children
       .filter((c) => c.getAttribute('id') === 'tick'
         && c.getAttribute('data-grade') === grade)
       .map((t) => Number(t.getAttribute('y1')) - Number(t.getAttribute('y2'))));
 
     for (const [grade, found] of lens.entries()) {
-      assert.ok(found.length > 0, `grade ${grade} exists on L`);
+      assert.ok(found.length > 0, `grade ${grade} exists on D`);
+    }
+    // Every tick of a grade is the same length, which is what makes the three
+    // classes read as three classes rather than as noise.
+    for (const found of lens) {
+      assert.equal(new Set(found.map((n) => n.toFixed(3))).size, 1,
+        'a grade is one length');
     }
     assert.ok(Math.min(...lens[0]) > Math.max(...lens[1]),
       `labelled (${Math.min(...lens[0])}) must outrun the middles (${Math.max(...lens[1])})`);
@@ -209,11 +218,12 @@ test('the graduated area begins at the index, as the photographs show', () => {
   });
 });
 
-test('a row legend sits two to three character widths left of its scale', () => {
+test('a row legend sits a couple of character widths left of its scale', () => {
   // Measured on the photographs: the legend's right edge clears the start of
-  // the scale by a couple of characters, not by the width of the rule. At the
-  // size the legends are printed, one character is about 5.5 units.
-  const charW = 5.5;
+  // the scale by a fraction of a row's height, not by the width of the rule. At
+  // the size the legends are printed, one character is about six units, so the
+  // gap is between two and three of them.
+  const charW = 6;
   withStubDom(() => {
     for (const face of ['front', 'back']) {
       const svg = stubNode('svg');
@@ -237,41 +247,53 @@ test('a row legend sits two to three character widths left of its scale', () => 
 
 test('every legend is still inside the rule, with room for its own text', () => {
   // Pulling the legend in to two characters must not push its left half off the
-  // end of the stock. LL01 is the widest name on either face.
+  // end of the stock. LL01 is the widest name on either face, and the legend
+  // column is the ivory reserved for all of them.
   withStubDom(() => {
     const svg = stubNode('svg');
-    render.draw(svg, RULE, { face: 'front' });
+    render.draw(svg, RULE, { face: 'back' });
     const name = byId(svg, 'row-LL01')[0].children
       .find((c) => c.name === 'text' && c.textContent === 'LL01');
     const gap = -Number(name.getAttribute('x'));
-    const width = 'LL01'.length * 6;
-    assert.ok(gap + width <= render.OVERHANG + 0.01,
-      `LL01 needs ${gap + width} units of margin but the stock gives `
-      + `${render.OVERHANG}`);
+    const width = 'LL01'.length * 6.5;
+    assert.ok(gap + width <= rule669.LEGEND_COL + 0.01,
+      `LL01 needs ${gap + width} units of margin but the legend column is `
+      + `${rule669.LEGEND_COL}`);
   });
 });
 
-test('a legend is drawn in its row colour, as the instrument prints it', () => {
-  // The photographs colour the legends to match their row: LL01, CIF, CI and DI
-  // are printed in red on the front face, as are LL02, LL03, T and S on the back.
-  const red = new Set(['LL01', 'CIF', 'CI', 'DI']);
-  const redBack = new Set(['LL02', 'LL03', 'T', 'S']);
+test('every legend is printed black, including on the rows with red numbers', () => {
+  // Read at 1:1 from the photographs, and it corrected an earlier claim: the row
+  // NAMES are black on every row of both faces, and only the numbers take the
+  // second, red pass. LL02, LL03, CIF and CI all carry a black name above a red
+  // number on the front, and T and S do the same on the back.
+  const RED_ROWS = new Set(['LL01', 'LL02', 'LL03', 'CIF', 'CI', 'DI', 'T', 'S']);
   withStubDom(() => {
-    for (const [face, reds] of [['front', red], ['back', redBack]]) {
+    for (const face of ['front', 'back']) {
       const svg = stubNode('svg');
       render.draw(svg, RULE, { face });
       for (const row of rule669.layout(face)) {
         const name = byId(svg, `row-${row.name}`)[0].children
           .find((c) => c.name === 'text' && c.textContent === row.label);
         const fill = name.getAttribute('fill');
-        // Red rows are printed in red; everything else in the dark ink of
-        // whichever piece of the rule it is printed on.
-        const dark = ['var(--rule-ink)', 'var(--slide-ink)'];
-        if (reds.has(row.name)) {
-          assert.equal(fill, 'var(--red-ink)', `${row.name} legend on the ${face} face`);
-        } else {
-          assert.ok(dark.includes(fill),
-            `${row.name} legend on the ${face} face is ${fill}, not red`);
+        assert.ok(['var(--rule-ink)', 'var(--slide-ink)'].includes(fill),
+          `${row.name} legend on the ${face} face is ${fill}, not black ink`);
+      }
+      // And the numbers do take the row's own colour.
+      for (const row of rule669.layout(face)) {
+        const group = byId(svg, `row-${row.name}`)[0];
+        const numbers = group.children.filter((c) => c.name === 'text'
+          && c.textContent !== row.label && c.textContent !== 'not recovered');
+        if (numbers.length === 0) continue;
+        const want = RED_ROWS.has(row.name) ? 'var(--red-ink)' : null;
+        for (const number of numbers) {
+          const fill = number.getAttribute('fill');
+          if (want) {
+            assert.equal(fill, want, `${row.name}'s numbers are red on the ${face} face`);
+          } else {
+            assert.notEqual(fill, 'var(--red-ink)',
+              `${row.name}'s numbers are not red on the ${face} face`);
+          }
         }
       }
     }
@@ -525,13 +547,51 @@ test('a graduation is placed where geometry says the scale is graduated', () => 
     // The D row's 2 must sit where geometry puts D 2, which is the same number
     // the planner aims the cursor at. Labels are drawn as text at the tick's x;
     // the tick itself is a vertical line at the same position.
+    //
+    // `2` is printed twice on D, and that is the instrument's own convention:
+    // the tenths of the opening interval print their digit alone, so the second
+    // `2` is one and two tenths. The one this test wants is the whole number.
     const want = g.posOf('D', 2);
     const row = byId(svg, 'row-D')[0];
-    const labels = row.children.filter((c) => c.name === 'text' && c.textContent === '2');
-    assert.ok(labels.length >= 1, 'D prints a 2');
-    for (const label of labels) {
-      assert.ok(Math.abs(Number(label.attrs.x) - want) < 1,
-        `D 2 at ${label.attrs.x}, geometry says ${want}`);
+    const twos = row.children
+      .filter((c) => c.name === 'text' && c.textContent === '2')
+      .map((c) => Number(c.attrs.x));
+    assert.ok(twos.length >= 1, 'D prints a 2');
+    const whole = twos.filter((x) => Math.abs(x - want) < 1);
+    assert.equal(whole.length, 1,
+      `D prints its 2 at geometry's ${want}, got ${twos.join(', ')}`);
+    // And the other one is where 1.2 is, which is the convention above.
+    assert.ok(twos.some((x) => Math.abs(x - g.posOf('D', 1.2)) < 1),
+      'D also prints the tenths digit at 1.2');
+  });
+});
+
+test('a tenth of the opening interval is printed as its own digit', () => {
+  // Read at 1:1 from the front photograph: between the index and the 2, C and D
+  // print 1 2 3 4 5 6 7 8 9 for one and a tenth through one and nine tenths.
+  // The leading figure is the one the index has already given the reader, which
+  // is why the photographs show `1` twice in a row at the start of the scale.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const row = byId(svg, 'row-C')[0];
+    const labels = row.children
+      .filter((c) => c.name === 'text' && c.textContent !== 'C')
+      .map((c) => ({ x: Number(c.attrs.x), s: c.textContent }))
+      .sort((a, b) => a.x - b.x);
+
+    const near = (v) => labels.find((l) => Math.abs(l.x - g.posOf('C', v)) < 1);
+    assert.equal(near(1).s, '1', 'the index prints 1');
+    assert.equal(near(1.1).s, '1', 'a tenth prints 1');
+    assert.equal(near(1.2).s, '2', 'two tenths prints 2');
+    assert.equal(near(1.9).s, '9', 'nine tenths prints 9');
+    assert.equal(near(2).s, '2', 'and the whole number two prints 2 again');
+    assert.equal(near(10).s, '10', 'the far end prints 10');
+    // Above 2 the tenths are marked but not named: a rule labels the integers
+    // and nothing else up there, which is what keeps the row legible.
+    for (const v of [3.5, 6.5, 8.5]) {
+      assert.equal(labels.filter((l) => Math.abs(l.x - g.posOf('C', v)) < 1).length, 0,
+        `nothing is printed at ${v}`);
     }
   });
 });
@@ -564,21 +624,28 @@ test('no graduation is drawn past the end of the rule', () => {
 test('a log-log row prints its own values, not an ordinary log scale\'s', () => {
   // The defect this fixes: LL1 was drawn with the ordinary log graduations, so
   // it read "1 10 100 1000" where it should read 1.01 to 1.1. The numbers were
-  // wrong, not merely crowded.
+  // wrong, not merely crowded. LL1 is on the back; LL2 is its counterpart on the
+  // front, and both are checked because a row drawn with the wrong table is
+  // exactly the kind of error that survives one face being looked at.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'back' });
+    const ll1 = byId(svg, 'row-LL1')[0].children
+      .filter((c) => c.name === 'text').map((c) => c.textContent);
+    assert.ok(ll1.includes('1.01'), `LL1 prints 1.01, got ${ll1.join(' ')}`);
+    assert.ok(ll1.includes('1.1'), `LL1 prints 1.1, got ${ll1.join(' ')}`);
+    assert.ok(!ll1.includes('10'), 'LL1 does not print an ordinary log 10');
+    assert.ok(!ll1.includes('1000'), 'LL1 does not run out to 1000');
+  });
   withStubDom(() => {
     const svg = stubNode('svg');
     render.draw(svg, RULE, { face: 'front' });
-
-    const labels = (name) => {
-      const row = byId(svg, `row-${name}`)[0];
-      return row.children.filter((c) => c.name === 'text').map((c) => c.textContent);
-    };
-
-    const ll1 = labels('LL1');
-    assert.ok(ll1.includes('1.01'), `LL1 prints 1.01, got ${ll1.join(' ')}`);
-    assert.ok(ll1.includes('1.10'), `LL1 prints 1.10, got ${ll1.join(' ')}`);
-    assert.ok(!ll1.includes('10'), 'LL1 does not print an ordinary log 10');
-    assert.ok(!ll1.includes('1000'), 'LL1 does not run out to 1000');
+    const ll3 = byId(svg, 'row-LL3')[0].children
+      .filter((c) => c.name === 'text').map((c) => c.textContent);
+    assert.ok(ll3.includes('e'), `LL3 names the e it opens on, got ${ll3.join(' ')}`);
+    assert.ok(ll3.includes('20000'), `LL3 runs out to 20000, got ${ll3.join(' ')}`);
+    assert.ok(ll3.includes('20') && ll3.includes('30'), 'and carries the tens between');
+    assert.ok(ll3.includes('500'), 'and the hundreds that a reader aims at');
   });
 });
 
@@ -595,61 +662,100 @@ test('every log-log row is graduated, on both faces', () => {
   }
 });
 
-test('the log-log rows each read their own decade of excess', () => {
-  withStubDom(() => {
-    const svg = stubNode('svg');
-    render.draw(svg, RULE, { face: 'back' });
-    const labelsFor = (name) => {
-      const row = byId(svg, `row-${name}`)[0];
-      return row.children.filter((c) => c.name === 'text').map((c) => c.textContent);
-    };
-
-    // The rows differ by which decade of the excess each opens at. LL1 and
-    // LL01 read hundredths, LL2 and LL02 tenths, LL3 whole numbers.
-    const ll2 = labelsFor('LL2');
-    assert.ok(ll2.includes('1.10'), `LL2 opens at 1.10, got ${ll2.join(' ')}`);
-    assert.ok(!ll2.includes('1.01'), 'LL2 is not a copy of LL1');
-
-    const ll3 = labelsFor('LL3');
-    assert.ok(ll3.includes('2') && ll3.includes('11'),
-      `LL3 reads whole excesses, got ${ll3.join(' ')}`);
-    assert.ok(!ll3.includes('2.10'), 'LL3 is not a copy of LL2');
-  });
-});
-
-test('reciprocal rows graduate on the reciprocals, as the instrument prints them', () => {
-  // CI reads 9 8 7 6 5 4 3 2 1 and then 9 8 7 ... again, each group a decade
-  // further along, running across the rule. It used to be graduated on 1..10000
-  // and placed at -log10(v), which threw everything above 1 off the left of the
-  // index and left the row showing "1 2 3 4" jammed against the margin.
+test('each log-log row prints the list of values it carries', () => {
+  // These rows are the one kind of scale whose labels are a list rather than a
+  // rule, so the list is data. A row drawn from another row's list would look
+  // entirely plausible and be wrong at every mark after the first.
   withStubDom(() => {
     const svg = stubNode('svg');
     render.draw(svg, RULE, { face: 'front' });
-    for (const name of ['CI', 'DI']) {
-      const row = byId(svg, `row-${name}`)[0];
-      const labels = row.children
-        .filter((c) => c.name === 'text' && c.textContent !== name)
-        .map((c) => c.textContent);
-      assert.deepEqual(labels.slice(0, 9), ['9', '8', '7', '6', '5', '4', '3', '2', '1'],
-        `${name} runs backwards from its 9`);
-      assert.ok(labels.length >= 18, `${name} carries two decades, got ${labels.length}`);
+    const labelsFor = (name) => byId(svg, `row-${name}`)[0].children
+      .filter((c) => c.name === 'text' && c.textContent !== name)
+      .map((c) => c.textContent);
 
-      const xs = row.children
-        .filter((c) => c.name === 'line' && c.attrs.id === 'tick')
-        .map((c) => Number(c.attrs.x1));
-      assert.ok(Math.min(...xs) >= 0, `${name} does not run off the left edge`);
-      assert.ok(Math.max(...xs) > RULE.axisPx * 0.9,
-        `${name} runs the length of the rule`);
+    const ll2 = labelsFor('LL2');
+    assert.ok(ll2.includes('1.11'), `LL2 opens at 1.11, got ${ll2.join(' ')}`);
+    assert.ok(ll2.includes('1.15'), 'LL2 carries 1.15');
+    assert.ok(ll2.includes('2.5'), 'LL2 carries 2.5');
+    assert.ok(ll2.includes('e'), 'and names e at its far end');
+    assert.ok(!ll2.includes('1.01'), 'LL2 is not a copy of LL1');
+
+    const ll3 = labelsFor('LL3');
+    assert.ok(ll3.includes('3') && ll3.includes('10'),
+      `LL3 reads whole numbers, got ${ll3.join(' ')}`);
+    assert.ok(ll3.includes('500') && ll3.includes('1000'),
+      'and then the hundreds');
+    assert.ok(!ll3.includes('2.10'), 'LL3 is not a copy of LL2');
+
+    const ll02 = labelsFor('LL02');
+    assert.ok(ll02.includes('.90') && ll02.includes('.88'),
+      `LL02 opens .90 .88, got ${ll02.join(' ')}`);
+    assert.ok(ll02.includes('.50'), 'and runs down through .50');
+    assert.ok(ll02.includes('1/e'), 'closing on the 1/e the instrument prints');
+  });
+});
+
+test('the rows below one print their numbers falling, as the instrument does', () => {
+  // LL02 runs .90 .88 .86 ... 50 45 40 left to right, with the largest value at
+  // the index. A row drawn in mirror image is the kind of error that reads as
+  // plausible until it is compared with the photograph.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const ll02 = byId(svg, 'row-LL02')[0].children
+      .filter((c) => c.name === 'text' && c.textContent !== 'LL02')
+      .map((c) => ({ x: Number(c.attrs.x), s: c.textContent }))
+      .sort((a, b) => a.x - b.x);
+    assert.equal(ll02[0].s, '.90', 'the index carries the largest value');
+    assert.equal(ll02[1].s, '.88', 'and the numbers fall from there');
+    assert.equal(ll02[ll02.length - 1].s, '1/e', 'to the 1/e at the far end');
+  });
+});
+
+test('a reciprocal row prints its numbers falling from ten to one', () => {
+  // Read at 1:1 from the front photograph: CI's index is 10 in red, and the
+  // numbers fall 9 8 7 as the eye runs right, closing on 1 at the far end. It is
+  // one decade, like every other row on the rule -- an earlier model gave it two
+  // and drew "1 2 3 4" jammed against the margin.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const row = byId(svg, 'row-CI')[0];
+    const labels = row.children
+      .filter((c) => c.name === 'text' && c.textContent !== 'CI')
+      .map((c) => ({ x: Number(c.attrs.x), s: c.textContent }))
+      .sort((a, b) => a.x - b.x);
+
+    assert.equal(labels[0].s, '10', 'the index reads 10');
+    // Read at the positions geometry puts the whole numbers at, because the
+    // tenths of the opening interval print their digit alone and so contribute
+    // digits of their own to the row.
+    const at = (v) => labels.find((l) => Math.abs(l.x - g.posOf('CI', v)) < 1);
+    for (const v of [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]) {
+      const found = at(v);
+      assert.ok(found, `CI prints its ${v}`);
+      assert.equal(found.s, String(v), `CI's ${v} prints as ${v}`);
     }
+    // And they fall left to right, which is the whole character of the row.
+    for (let i = 1; i < labels.length; i++) {
+      assert.ok(labels[i].x > labels[i - 1].x, 'labels run left to right');
+    }
+    assert.ok(g.posOf('CI', 10) < g.posOf('CI', 1), 'and the values fall as they do');
+
+    const xs = row.children
+      .filter((c) => c.name === 'line' && c.attrs.id === 'tick')
+      .map((c) => Number(c.attrs.x1));
+    assert.ok(Math.min(...xs) >= 0, 'CI does not run off the left edge');
+    assert.ok(Math.max(...xs) > RULE.axisPx * 0.9, 'CI runs the length of the rule');
   });
 });
 
 test('a reciprocal graduation reads back its own value', () => {
   // The position of a value on a reciprocal row must agree with the value the
   // row is supposed to be showing there, or the row is decorative.
-  const g = geometry(RULE);
-  for (const v of [0.9, 0.5, 0.25, 0.1]) {
-    const back = g.read('CI', g.posOf('CI', v));
+  const gg = geometry(RULE);
+  for (const v of [10, 7, 4, 2, 1]) {
+    const back = gg.read('CI', gg.posOf('CI', v));
     assert.ok(Math.abs(back - v) < 1e-9, `CI round trip at ${v}: got ${back}`);
   }
 });
@@ -657,14 +763,21 @@ test('a reciprocal graduation reads back its own value', () => {
 test('DI is graduated on the same axis as CI', () => {
   // DI is the stock's reciprocal row and CI the slide's. They are the same
   // graduations, which is why a reciprocal can be read directly off D against
-  // the one on the slide.
+  // the one on the slide. Drawn on the back, where DI is printed.
   withStubDom(() => {
     const svg = stubNode('svg');
-    render.draw(svg, RULE, { face: 'front' });
+    render.draw(svg, RULE, { face: 'back' });
     const xs = (name) => byId(svg, `row-${name}`)[0].children
       .filter((c) => c.name === 'line' && c.attrs.id === 'tick')
       .map((c) => Number(c.attrs.x1));
-    assert.deepEqual(xs('DI'), xs('CI'), 'DI and CI share one set of graduations');
+    withStubDom(() => {
+      const front = stubNode('svg');
+      render.draw(front, RULE, { face: 'front' });
+      const ci = byId(front, 'row-CI')[0].children
+        .filter((c) => c.name === 'line' && c.attrs.id === 'tick')
+        .map((c) => Number(c.attrs.x1));
+      assert.deepEqual(xs('DI'), ci, 'DI and CI share one set of graduations');
+    });
   });
 });
 
@@ -744,8 +857,10 @@ test('the minimap slide marker follows the slide', () => {
     render.move(parts, 200, 0);
     const marker = byId(svg, 'minimap-slide')[0];
     assert.ok(marker, 'marker exists');
-    // The marker slides along the bar it sits on, so it moves by position.
-    const want = -render.OVERHANG + 200;
+    // The marker slides along the bar it sits on, so it moves by position, and
+    // the bar starts at the left edge of what is drawn -- the legend column and
+    // the end cap, not the index.
+    const want = render.drawnExtent(RULE.axisPx).left + 200;
     assert.ok(Math.abs(Number(marker.attrs.x) - want) < 0.01,
       `marker at ${marker.attrs.x}, expected ${want}`);
   });

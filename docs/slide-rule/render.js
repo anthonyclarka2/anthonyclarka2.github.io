@@ -1,18 +1,32 @@
 /**
- * SVG renderer for the K&E 669.
+ * SVG renderer for the K&E 4181-3.
  *
  * The only module that touches the DOM. It draws from two sources of truth and
  * invents nothing: `geometry` says where each graduation falls, and `rule669`
- * says which rows exist, which piece of material each is printed on, and which
- * of them could not be read off the photographs. That last part matters -- the
- * rows whose graduations are unknown are drawn as a name and left blank, because
- * plausible invented ticks would be worse than an honest gap.
+ * says which rows exist, which piece of material each is printed on, what each
+ * one prints, and which of them could not be read off the photographs. That last
+ * part matters -- the rows whose graduations are unknown are drawn as a name and
+ * left blank, because plausible invented ticks would be worse than an honest
+ * gap.
  *
  * The rule is drawn as two pieces. The fixed scale plate carries the rows above
  * and below the band; the sliding plate carries the band's rows and lives inside
  * the `#slide` group so it travels. A seam separates them, sized by `rule669`
  * rather than chosen here, so the renderer cannot quietly draw the rule as one
  * continuous strip.
+ *
+ * HOW A ROW IS PRINTED, from the photographs at 1:1. Each row of the instrument
+ * is a band of graduations hanging from a baseline with its numbers printed
+ * above them: the label sits at the top of the row and the ticks run down from
+ * it to the row's lower edge, so a row reads top-down. The lengths are graded --
+ * the marked values are long, the subdivisions shorter -- which is what lets a
+ * reader find a value without reading every number. A row's `y` in rule669 is
+ * its baseline, and its graduations are drawn UPWARD from there.
+ *
+ * The row NAMES in the left-hand column are black on every row of both faces.
+ * Only the numbers are coloured, and only on the rows the instrument prints in
+ * red. The photographs settle this: `LL02`, `LL03`, `CIF` and `CI` all carry
+ * their names in black above numbers in red.
  *
  * The cursor is drawn as the instrument's glass: a transparent body with a metal
  * surround, four corner screws, and a hairline down the middle. It is the piece
@@ -30,39 +44,25 @@
   const { geometry } = geometryLib;
   const NS = 'http://www.w3.org/2000/svg';
 
-  /* The margin to the left of the index, and the only place a scale's name is
-     printed.
-
-     This used to be 160 units of unused stock. It was justified as the slide's
-     overhang -- tangent above 45 degrees falls off the left of the index -- but
-     no row ever used it: a reciprocal graduation sits at -log10(v), which for
-     every value below 1 is positive, so CI and DI both begin at or right of the
-     index and nothing is ever printed out there. On the photographs every scale
-     starts at the same vertical line and the legends sit just to its left.
-
-     So it is now sized for the legends and nothing else. */
-  const OVERHANG = 40;
-
-  /* How far a legend's right edge clears the start of its scale, measured off
-     the photographs at two to three characters. At the size the legends are
-     printed one character is about 5.5 units. */
-  const LEGEND_GAP = 2.5 * 5.5;
-
-  /* The end caps the photographs show at both ends of the rule, and the clear
-     space between the last graduation and the cap. Without the gap the cap sits
-     on top of the final numbers on every scale. */
-  const CAP_W = 46;
-  const GAP = 14;
+  /* How far a legend's right edge clears the index. Measured on the instrument
+     and kept in rule669 with the other metrics, because the drawn extent has to
+     agree with it. */
+  const LEGEND_GAP = rule669.LEGEND_GAP;
 
   /**
    * How far left of the axis the drawing starts, and how wide it is in total.
+   *
    * Exported so the camera can frame exactly what is drawn; if the two disagree
-   * the view crops a cap or shows empty space.
+   * the view crops a cap or shows empty space. Left of the graduations sits the
+   * column the row names are printed in, then the end cap; right of them sits
+   * the end column, where the instrument carries each row's range caption, then
+   * the other cap. All four widths are measured off the photographs.
    */
   function drawnExtent(axisPx) {
+    const left = -(rule669.LEGEND_COL + rule669.CAP_L);
     return {
-      left: -OVERHANG - CAP_W,
-      width: axisPx + OVERHANG + CAP_W + GAP * 2,
+      left,
+      width: rule669.LEGEND_COL + axisPx + rule669.END_COL + rule669.CAP_L + rule669.CAP_R,
     };
   }
 
@@ -80,6 +80,134 @@
 
   /* ---------------------------------------------------------- graduations */
 
+  /* The finest marking worth drawing, in rule units. Below this two graduations
+     are one blur on screen, which is the crowding the instrument's engraver was
+     avoiding too. It is a drawing limit, not a claim about the instrument: it
+     only ever thins ticks out where they could not be told apart anyway.
+
+     Set from the instrument's own finest marking rather than from taste. On C and
+     D the hundredths between 1 and 2 are the tightest graduations on the rule:
+     1544 units of axis over one decade puts two of them 6.7 units apart at the
+     start of the interval and 3.3 apart at its end, so anything above 3 units
+     starts eating graduations the photographs plainly show. */
+  const MIN_TICK = 2.5;
+
+  /* How finely a row subdivides between its labels, by the mantissa the mark
+     falls on: hundredths from 1 to 2, fiftieths from 2 to 4, twentieths above.
+     Read off the front photograph by counting the graduations between two
+     labels -- nine of them between 1.1 and 1.2, so hundredths, and twenty
+     between 5.0 and 6.0, so fiftieths.
+     
+     The three steps look arbitrary and are not: each is one per cent of the
+     value it sits beside, so the graduations come out the same physical
+     distance apart all the way up the scale. That is why a rule can be read at
+     a glance anywhere along it. */
+  function baseStep(mantissa) {
+    if (mantissa < 2) return 0.01;
+    if (mantissa < 4) return 0.02;
+    return 0.05;
+  }
+
+  /* Rounded up to the 1-2-5 series, which is what graduations are actually
+     spaced on. A step of 0.03 exists in no engraver's rule. */
+  function snap125(x) {
+    const decade = Math.pow(10, Math.floor(Math.log10(x) + 1e-9));
+    for (const m of [1, 2, 5]) if (m * decade >= x * (1 - 1e-9)) return m * decade;
+    return 10 * decade;
+  }
+
+  /* The kinds of scale whose values cycle: their labels name a position in a
+     cycle rather than the value itself, so 1 on a folded scale means ten. */
+  const CYCLIC = { log: true, reciprocal: true, folded: true, 'folded-reciprocal': true };
+
+  /**
+   * The value a label names on a given scale.
+   *
+   * This is the small piece of arithmetic the instrument performs for its
+   * reader, and it is what makes the folded scales come out right. A label reads
+   * `1`, and on DF that is the mark for ten, because ten is the value the folded
+   * scale carries at its middle. Rather than wrapping a scale around on itself
+   * -- which puts two graduations at the same place and cannot say which is
+   * which -- the label is carried into whichever cycle of the scale already
+   * contains it. The result is that DF prints its labels in the order the
+   * photographs show, 4 5 6 7 8 9 then 1 2 3, with a pi at each end.
+   */
+  function resolveLabel(def, label) {
+    if (!CYCLIC[def.kind] || !(label > 0)) return label;
+    const lo = def.range[0];
+    const hi = def.range[1];
+    if (!(lo > 0)) return label;
+    let v = label;
+    // Bounded rather than `while`: a label outside its scale's range entirely
+    // -- which the thinning never produces, but a mistaken table might -- would
+    // otherwise spin here for ever.
+    for (let i = 0; i < 24 && v > hi; i++) v /= 10;
+    for (let i = 0; i < 24 && v < lo; i++) v *= 10;
+    return v;
+  }
+
+  /* A value as the instrument prints it.
+   *
+   * `minDigits` is how many decimal places the row's subdivision needs, which is
+   * what the instrument itself prints: L is marked every tenth, so it reads
+   * `.0 .1 .2`, while the log-log rows are marked every hundredth and read
+   * `.90 .88`. More places are added only when the value needs them, for `.015`
+   * and `.0005`. Above one the trailing zeros come off, so LL2 reads `2.5` and
+   * not `2.50`.
+   */
+  function compact(v, minDigits) {
+    const a = Math.abs(v);
+    let digits = Math.max(minDigits, a >= 1 ? 1 : 0);
+    while (digits < 6 && Math.abs(Number(v.toFixed(digits)) - v) > a * 1e-4) digits++;
+    let s = v.toFixed(digits);
+    if (a >= 1 && s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s;
+  }
+
+  /* A value below one, printed the instrument's way: the zero before the point
+     is dropped, so `.90` and `.00005`. Zero itself prints as `.0`, which is what
+     the L scale's index carries on the instrument. */
+  function belowOne(v, minDigits) {
+    if (v === 0) return '.0';
+    const s = compact(v, minDigits === undefined ? 2 : minDigits);
+    return s.charAt(0) === '0' ? s.slice(1) : s;
+  }
+
+  /* The mantissa of a value: the figure a cyclic scale prints. */
+  function mantissaText(v) {
+    const decade = Math.pow(10, Math.floor(Math.log10(v) + 1e-9));
+    return String(Math.round(v / decade));
+  }
+
+  /**
+   * What a cyclic scale prints at a value, and how long its tick is.
+   *
+   * Two conventions, both taken from the photographs. Between the first two
+   * numbers the instrument prints the tenths digit ALONE -- 1, 1, 2, 3 ... 9 for
+   * 1.0, 1.1, 1.2 ... 1.9 -- because the leading figure is the one the index has
+   * already given the reader. Above that it prints whole numbers only, so CF and
+   * DF run 4 5 6 7 8 9 across their first half and 1 2 3 across their second,
+   * each of those being a mantissa of a value a decade further up.
+   */
+  function cyclicLabel(def, v) {
+    const decade = Math.pow(10, Math.floor(Math.log10(v) + 1e-9));
+    const t = def.kind === 'reciprocal' ? v : v / decade;
+    const whole = Math.abs(t - Math.round(t)) < 1e-9;
+    if (whole) return String(Math.round(t));
+    if (t < 2 && Math.abs(t * 10 - Math.round(t * 10)) < 1e-9) {
+      return String(Math.round(t * 10) - 10);
+    }
+    return '';
+  }
+
+  function cyclicGrade(def, v) {
+    if (cyclicLabel(def, v)) return 0;
+    const decade = Math.pow(10, Math.floor(Math.log10(v) + 1e-9));
+    const t = def.kind === 'reciprocal' ? v : v / decade;
+    if (Math.abs(t - Math.round(t)) < 1e-9) return 0;
+    return Math.abs(t * 10 - Math.round(t * 10)) < 1e-9 ? 1 : 2;
+  }
+
   /**
    * The values a row prints, as graduations on the rule.
    *
@@ -89,259 +217,309 @@
    * came to disagree about where a 2 was.
    */
   function graduations(g, row) {
-    if (row.kind === 'unverified') return [];
-
+    if (!row.scale || row.unverified) return [];
+    const def = g.describe(row.scale);
     const out = [];
     // `grade` is 0 for a labelled graduation, 1 for one between the labels and
     // 2 for a fine subdivision. Only the labelled ones print a number.
     const push = (x, label, grade) => {
-      // Graduations are clipped to the graduated area, which begins at the index
-      // and not before it. A reciprocal scale runs from about -log10(v), so
-      // every value under 1 lands at or right of the index and nothing reaches
-      // into the margin; the margin belongs to the legends alone.
-      if (Number.isFinite(x) && x >= 0 && x <= g.axisPx) out.push({ x, label, grade });
+      if (!Number.isFinite(x)) return;
+      // Graduations are clipped to the graduated area. The margin left of the
+      // index belongs to the legends and to the overhang, where a tangent above
+      // 45 degrees would land if the slide could reach that far; nothing is
+      // printed out there and a tick that strayed would sit among the names.
+      if (x < -1e-6 || x > g.axisPx + 1e-6) return;
+      out.push({ x: Math.min(Math.max(x, 0), g.axisPx), label: label || '', grade });
     };
 
-    const scale = scaleFor(row);
+    switch (def.kind) {
+      case 'log': logGraduations(g, def, push); break;
+      case 'linear': linearGraduations(g, def, push); break;
+      case 'reciprocal':
+      case 'folded':
+      case 'folded-reciprocal': cyclicGraduations(g, def, push); break;
+      case 'log-log': logLogGraduations(g, def, row, push); break;
+      case 'projected': projectedGraduations(g, def, push); break;
+      default: break;
+    }
+    // Thinned once, over the finished list, so the rule about which labels may
+    // survive is applied to the row as printed rather than to one scale's own
+    // walk of it.
+    return thinByDistance(out);
+  }
 
-    if (row.kind === 'log') {
-      for (let dec = 0; dec < g.decades; dec++) {
-        for (let m = 1; m < 10; m++) {
-          const v = m * Math.pow(10, dec);
-          const x = g.posOf(scale, v);
-          if (x > g.axisPx) return out;
-          push(x, String(Number(v.toPrecision(12))), m === 1 ? 0 : 1);
-          // The half between two labels. A reader interpolating between 2 and 3
-          // needs a graduation to aim at, and without one the numbers float
-          // free of the scale that carries them.
-          if (m < 9) push(g.posOf(scale, (m + 0.5) * Math.pow(10, dec)), '', 2);
+  /* Where a rule tightens or loosens its subdivision, as mantissas. The
+     instrument changes step at two, at four and at ten -- the same three breaks
+     on every logarithmic row it prints. */
+  const STEP_BREAKS = [1, 2, 4, 10];
+
+  /**
+   * C, D, A, B and K: the plain logarithmic scale.
+   *
+   * Walked one subdivision run at a time rather than as a single sweep, because
+   * a step that changes mid-walk lands the marks between the values a reader
+   * looks for: the run from four to ten would come out 4.05, 4.15, 4.25 rather
+   * than 4.1, 4.2, 4.3, and A and B would print no labels above 4 at all. Each
+   * run starts on a round value and steps by an exact multiple, so every mark
+   * falls where the instrument's does.
+   *
+   * The step is the instrument's own break-down, widened by the row's cycle
+   * count, because a scale carrying two decades has half the room for each and
+   * cannot be graduated as finely as one that carries a single decade.
+   */
+  function logGraduations(g, def, push) {
+    const name = def.name;
+    const cycles = def.cycles || 1;
+    for (let e = 0; e < cycles; e++) {
+      const decade = Math.pow(10, e);
+      for (let i = 0; i + 1 < STEP_BREAKS.length; i++) {
+        const from = STEP_BREAKS[i] * decade;
+        const to = STEP_BREAKS[i + 1] * decade;
+        let step = snap125(baseStep(STEP_BREAKS[i]) * cycles * decade);
+        // Never finer than the plate can show. Measured at the run's start,
+        // which is where a run is at its tightest.
+        for (let guard = 0;
+          guard < 8 && step < decade * 10
+            && g.posOf(name, from + step) - g.posOf(name, from) < MIN_TICK;
+          guard++) {
+          step = snap125(step * 2.001);
+        }
+        for (let n = 0; from + n * step < to - step * 1e-9; n++) {
+          const v = from + n * step;
+          push(g.posOf(name, v), logLabel(v, cycles), logGrade(v, cycles));
         }
       }
-      return thin(out);
     }
+    // The row's far end, which the runs stop just short of.
+    const top = Math.pow(10, cycles);
+    push(g.posOf(name, top), logLabel(top, cycles), 0);
+  }
 
-    if (row.kind === 'square') {
-      // A runs 0 to 100 and then restarts. One cycle spans two decades, so a
-      // four decade rule shows exactly one and the second would begin precisely
-      // where the rule ends.
-      for (let v = 1; v <= 100; v++) {
-        const x = g.posOf(scale, v);
-        if (x > g.axisPx) break;
-        push(x, v % 10 === 0 ? String(v) : '', v % 10 === 0 ? 0 : 2);
-      }
-      return thin(out);
+  function logLabel(v, cycles) {
+    const decade = Math.pow(10, Math.floor(Math.log10(v) + 1e-9));
+    const mantissa = v / decade;
+    const whole = Math.abs(mantissa - Math.round(mantissa)) < 1e-9;
+    // The tenths of the opening interval print their own digit. On C and D this
+    // is why the photographs show `1` twice in a row at the index and just after
+    // it: the first is one, the second is one and a tenth.
+    if (cycles === 1 && v < 2 && !whole) {
+      const tenth = Math.round(mantissa * 10);
+      if (Math.abs(mantissa * 10 - tenth) < 1e-9) return String(tenth - 10);
     }
+    if (!whole) return '';
+    return String(Math.round(v));
+  }
 
-    if (row.kind === 'cube') {
-      for (let dec = 0; dec < g.decades; dec++) {
-        for (let m = 1; m < 10; m++) {
-          const v = m * Math.pow(10, dec);
-          const x = g.posOf(scale, v);
-          if (x > g.axisPx) return out;
-          push(x, String(Number(v.toPrecision(12))), m === 1 ? 0 : 1);
-          if (m < 9) push(g.posOf(scale, (m + 0.5) * Math.pow(10, dec)), '', 2);
+  function logGrade(v, cycles) {
+    if (logLabel(v, cycles)) return 0;
+    const decade = Math.pow(10, Math.floor(Math.log10(v) + 1e-9));
+    const mantissa = v / decade;
+    if (Math.abs(mantissa - Math.round(mantissa)) < 1e-9) return 0;
+    return Math.abs(mantissa * 10 - Math.round(mantissa * 10)) < 1e-9 ? 1 : 2;
+  }
+
+  /**
+   * L: the logarithm itself, laid out straight.
+   *
+   * Linear from 0 to 1, because log10 of a 1-to-10 reading spans exactly that.
+   * Printed as `.0` through `1`, which is how the instrument prints it.
+   */
+  function linearGraduations(g, def, push) {
+    for (let n = 0; n <= 100; n++) {
+      const v = n / 100;
+      const major = n % 10 === 0;
+      // One decimal place, because that is all the row's own subdivision
+      // carries: the instrument prints `.0 .1 .2` here, not `.10 .20`.
+      const label = major ? belowOne(v, 1) : '';
+      const grade = !major ? 2 : (n % 50 === 0 ? 0 : 1);
+      push(g.posOf(def.name, v), label, grade);
+    }
+  }
+
+  /**
+   * CI, DI, CF, DF and CIF: the scales that cycle.
+   *
+   * CI and DI are C and D read backwards, so their graduations are the same
+   * graduations: 10 at the index and 1 at the far end, with the marks between
+   * printed as whole numbers. CF and DF are C and D slid along by a factor of pi,
+   * so their marks are C's marks carried to where a value a decade further up
+   * would sit -- which puts a pi at each end of the row and prints its labels 4 5
+   * 6 7 8 9 then 1 2 3. CIF is the same shift applied to the reciprocals, so it
+   * opens at about 3.18, runs down through 2 and 1, and comes back out through
+   * 9 8 7 6 5 4 to about 3.18 again.
+   *
+   * All five are graduated by walking the round values in their range, not by
+   * walking positions: a rule is engraved at the values a reader looks for, and
+   * the crowding falls out of that on its own.
+   */
+  function cyclicGraduations(g, def, push) {
+    const name = def.name;
+    const [lo, hi] = def.range;
+    const tol = 1e-9;
+    const first = Math.floor(Math.log10(lo) + tol);
+    const last = Math.floor(Math.log10(hi) - tol);
+    for (let e = first; e <= last; e++) {
+      const decade = Math.pow(10, e);
+      let t = 1;
+      for (let guard = 0; t <= 10 + tol && guard < 4000; guard++) {
+        const value = t * decade;
+        if (value >= lo * (1 - tol) && value <= hi * (1 + tol)) {
+          push(g.posOf(name, value), cyclicLabel(def, value), cyclicGrade(def, value));
         }
+        t += snap125(baseStep(t));
       }
-      return out;
     }
 
-    if (row.kind === 'reciprocal') {
-      // A reciprocal row is graduated on the reciprocals THEMSELVES, not on the
-      // values whose reciprocals they are. Walking 1, 2, 3 and placing each at
-      // -log10(v) throws every value above 1 off the left of the index and
-      // leaves CI and DI showing "1 2 3 4" jammed against the margin, which is
-      // what it used to do.
-      //
-      // What the instrument prints is 9 8 7 6 5 4 3 2 1 and then 9 8 7 ... again,
-      // each group one decade further along: the mantissa, with the 1 marking
-      // the decade. So CI runs 0.9 to 0.001 as x increases, across the rule.
-      for (let dec = 0; dec < g.decades; dec++) {
-        for (let m = 9; m >= 1; m--) {
-          const v = m / Math.pow(10, dec + 1);
-          const x = g.posOf(scale, v);
-          if (x > g.axisPx) return out;
-          push(x, String(m), m === 1 ? 0 : 1);
-          if (m > 1) {
-            const mid = (m - 0.5) / Math.pow(10, dec + 1);
-            push(g.posOf(scale, mid), '', 2);
-          }
-        }
-      }
-      return out;
+    // The folded scales carry a printed pi at each end, and the folded
+    // reciprocal a printed 3.18: the two values where the scale doubles back on
+    // itself, which a reader has to be told about because they are the only
+    // places on the rule where one mark stands for two values.
+    for (const v of [lo, hi]) {
+      const label = def.kind === 'folded' ? 'π'
+        : (def.kind === 'folded-reciprocal' ? '3.18' : null);
+      if (label) push(g.posOf(name, v), label, 0);
     }
+  }
 
-    if (row.kind === 'projected') {
-      for (let deg = 1; deg <= 90; deg++) {
-        const x = g.posOf(scale, deg);
-        if (x > g.axisPx) break;
-        push(x, String(deg), deg % 10 === 0 ? 0 : (deg % 5 === 0 ? 1 : 2));
+  /**
+   * The log-log rows.
+   *
+   * These are the one kind of scale whose labels are a list rather than a rule:
+   * LL3 runs 3 4 5 6 7 8 9 10 20 30 50 100 200 500 1000 2000 5000 10000 20000,
+   * changing step four times, and no formula produces that. The list lives on the
+   * row in rule669, read off the photographs, so that correcting a misread value
+   * is a one-line change in the place the reading was recorded.
+   *
+   * Between two labels the row is filled with a plain comb. That much is a
+   * drawing decision and not a reading: the photographs show these rows finely
+   * divided everywhere between the numbers, but which value each of those
+   * graduations carries was not recovered, and inventing round values for them
+   * would be worse than an honest fill.
+   */
+  function logLogGraduations(g, def, row, push) {
+    const values = [];
+    for (const entry of row.marks || []) {
+      // An entry is either a run -- exactly three numbers, from, to and step --
+      // or a list of values, which is what a row needs where the instrument
+      // thins its labels to the 1-2-5 series and no single step generates them.
+      // The length is what tells the two apart, so a run can never be mistaken
+      // for a three-value list.
+      if (entry.length === 3) {
+        const [from, to, step] = entry;
+        const dir = to >= from ? 1 : -1;
+        const n = Math.round(Math.abs(to - from) / step);
+        for (let i = 0; i <= n; i++) values.push(from + dir * i * step);
+      } else {
+        values.push(...entry);
       }
-      // Thinned on real distances. A trig scale is logarithmic in sin, which
-      // goes flat as the angle approaches 90, so the last twenty degrees crowd
-      // into a few units. Every graduation keeps its tick; only the labels that
-      // cannot fit are dropped, so the scale still shows where each degree is.
-      return thinByDistance(out);
     }
+    const ends = row.ends || [];
+    for (const [v] of ends) values.push(v);
+    values.sort((a, b) => a - b);
 
-    if (row.kind === 'log-log') {
-      // The row's own single decade, marked at the round excesses. These are the
-      // values a person reads off a log-log row -- 1.01, 1.02 and so on -- and
-      // not the mantissas of an ordinary log scale, which is what drew "1 10
-      // 100 1000" here and made the row unreadable.
-      //
-      // The excesses come from the scale's own range rather than being fixed,
-      // because LL1, LL2 and LL3 each read a different decade of the excess.
-      const range = g.logLogRange(scale);
-      const below = row.name === 'LL01';
-      // How finely the row subdivides depends on the size of its excess: a row
-      // opening at a hundredth marks hundredths, one opening at a tenth marks
-      // tenths. Built from the row's own bound, or every row prints the same
-      // values and LL2 reads as a copy of LL1.
-      // A row opening at 1 has its whole decade in whole numbers, so it marks them
-    // all; a row opening at a hundredth has room for hundredths. Derived from
-    // the row's own bound so each row prints the values it actually carries.
-    const step = range.min < 0.05 ? 0.01 : (range.min < 0.5 ? 0.1 : 1);
-      // Starting at the row's own lower bound, not one step above it: the
-      // opening value is the one a reader reads first, and skipping it left LL1
-      // running 1.02 to 1.10 with nothing at the index.
-      for (let n = 0; n * step < range.max - range.min + 1e-9; n++) {
-        const excess = range.min + n * step;
-        if (excess > range.max) break;
-        const v = below ? 1 - excess : 1 + excess;
-        const x = g.posOf(scale, v);
-        if (!Number.isFinite(x) || x > g.axisPx) break;
-        push(x, showLogLog(below, v), 0);
-        // A graduation between each pair, for the same reason the log rows carry
-        // one: these rows exist to resolve differences finer than the numbers
-        // they print, so a scale with only its labels cannot resolve anything.
-        if (n * step < range.max - range.min) {
-          const mid = below
-            ? 1 - (excess + step / 2)
-            : 1 + (excess + step / 2);
-          push(g.posOf(scale, mid), '', 2);
-        }
-      }
-      // The row's far end, where the next decade begins. Skipped when the loop
-      // already printed it: for a row opening at a tenth the last in-decade
-      // value IS the far end, and printing both gave "1.7 2 2".
-      const end = below ? 1 - range.max : 1 + range.max;
-      const endX = g.posOf(scale, end);
-      const alreadyDrawn = out.some((t) => Math.abs(t.x - endX) < 0.5);
-      if (Number.isFinite(endX) && endX <= g.axisPx && !alreadyDrawn) {
-        push(endX, showLogLog(below, end), 0);
-      }
-      // Not bucketed by decade the way an ordinary log row is: a log-log row IS
-      // one decade, so the 100px buckets cut it into three arbitrary groups and
-      // dropped 1.04, 1.05 and 1.09 from the middle of it. Thinned on real
-      // distances instead, which is what the crowding actually is.
-      return thinByDistance(out);
+    // The labels first, in the order they fall along the row. The walk above is
+    // in value order, which is the same order for a log-log row running up the
+    // scale and the reverse for one running down; sorting by position makes the
+    // fill below indifferent to which.
+    const labels = [];
+    for (const v of values) {
+      const named = ends.find(([ev]) => Math.abs(ev - v) <= Math.abs(v) * 1e-9 + 1e-12);
+      const x = g.posOf(def.name, v);
+      if (!Number.isFinite(x) || x < -1e-6 || x > g.axisPx + 1e-6) continue;
+      // Two marks a fraction of a unit apart are one mark. The ends are exact
+      // logarithms and the runs around them are round numbers, so a row's
+      // opening `1.01` and its end mark at e^0.01 land on the same graduation;
+      // printing both would print the label twice, once on top of itself.
+      if (labels.length && Math.abs(x - labels[labels.length - 1].x) < 1) continue;
+      labels.push({ x, label: named ? named[1] : belowOne(v) });
     }
+    labels.sort((a, b) => a.x - b.x);
 
-    return out;
+    for (let i = 0; i < labels.length; i++) {
+      push(labels[i].x, labels[i].label, 0);
+      const next = labels[i + 1];
+      if (!next) break;
+      const gap = next.x - labels[i].x;
+      const n = Math.floor(gap / (MIN_TICK * 1.5));
+      for (let k = 1; k < n; k++) {
+        push(labels[i].x + (gap * k) / n, '', 2);
+      }
+    }
+  }
+
+  /**
+   * S and T.
+   *
+   * A graduation belongs where the scale below reads ten times the trig value,
+   * so both rows span sin (or tan) 0.1 to 1 across the rule. S therefore runs
+   * from about 5.74 degrees at its index to 90 at its far end, with the small
+   * angles crowded at the left, and T runs 5.71 to 45. The crowding is real and
+   * is why a rule prints a complement beside each of its small angles; the
+   * thinning below drops the degree numbers that would run together, and keeps
+   * every graduation, so the scale still shows where each degree is.
+   */
+  function projectedGraduations(g, def, push) {
+    const last = Math.floor(def.range[1] + 1e-9);
+    for (let deg = 1; deg <= last; deg++) {
+      const x = g.posOf(def.name, deg);
+      push(x, String(deg), deg % 10 === 0 ? 0 : (deg % 5 === 0 ? 1 : 2));
+      const half = deg + 0.5;
+      const hx = g.posOf(def.name, half);
+      if (half <= def.range[1]) push(hx, '', 2);
+    }
   }
 
   /**
    * Drop labels that would run into their neighbour, judged by real distances.
    *
-   * Used on rows that are a single decade, where the buckets in `thin` have no
-   * meaning. A log-log row crowds hardest at its high end, where the excess runs
-   * 0.07 to 0.1 and the ten labels pack into the last fifth of the row: left
-   * alone, LL1 printed "1.09" straight through "1.10".
+   * A logarithmic scale crowds at one end or the other: a trig scale goes flat
+   * as the angle approaches 90, and a log-log row packs its labels into the last
+   * fifth. Printing them all produces a solid bar of digits. Every graduation
+   * keeps its tick; only the labels thin out, so the scale still shows where
+   * each mark is.
    *
    * The first and last labels are kept whatever the crowding. They are the ends
-   * of the decade, the two values that say which one this is, and a scale that
-   * cannot name its own range is not a scale.
+   * of the scale, the two values that say which one this is, and a scale that
+   * cannot name its own range is not a scale. Because that promise can be kept
+   * only at the expense of a neighbour, the walk runs once forwards and then
+   * back from the far end, so an end label displaces the label beside it rather
+   * than printing through it. S's 90 used to come out as "8390".
    */
   function thinByDistance(ticks) {
     const sorted = [...ticks].sort((a, b) => a.x - b.x);
-    let lastKeptX = -Infinity;
-    for (const [i, tick] of sorted.entries()) {
-      const isEnd = i === 0 || i === sorted.length - 1;
+    const marked = sorted.filter((t) => t.label);
+    if (marked.length <= 2) return ticks;
+    const need = (tick) => 8 + tick.label.length * 3.6;
+
+    // The two ends are kept before anything else is decided, so the rule that a
+    // scale must be able to name its own range cannot be lost to a neighbour.
+    const last = marked.length - 1;
+    marked[0].keep = true;
+    marked[last].keep = true;
+
+    // Forwards from the first end. `lastX` only advances on a label that
+    // survives, so a crowded run thins to one rather than to alternate ones.
+    let lastX = marked[0].x;
+    for (let i = 1; i < marked.length; i++) {
+      const tick = marked[i];
+      if (tick.keep) { lastX = tick.x; continue; }
+      if (tick.x - lastX < need(tick)) { tick.label = ''; continue; }
+      lastX = tick.x;
+    }
+
+    // And backwards from the far end, so a kept end label displaces the label
+    // beside it rather than printing through it. S's 90 used to come out as
+    // "8390", and then -- once that was fixed the other way round -- as nothing
+    // at all.
+    let nextX = marked[last].x;
+    for (let i = last - 1; i >= 0; i--) {
+      const tick = marked[i];
       if (!tick.label) continue;
-      const need = 6 + tick.label.length * 3.4;
-      if (!isEnd && tick.x - lastKeptX < need) {
-        tick.label = '';
-        continue;
-      }
-      lastKeptX = tick.x;
+      if (tick.keep) { nextX = tick.x; continue; }
+      if (nextX - tick.x < need(tick)) { tick.label = ''; continue; }
+      nextX = tick.x;
     }
     return ticks;
-  }
-
-  /**
-   * Drop labels that would run into their neighbours.
-   *
-   * A logarithmic scale crowds badly at the left of each decade, where 5, 6, 7,
-   * 8 and 9 sit within a few units of each other. Printing them all produces
-   * "500600700800900" and a graduation nobody can read, which is worse than
-   * printing fewer. Every graduation keeps its tick; only the labels thin out,
-   * so the scale still shows where each mark is.
-   *
-   * Labelling by DECADE rather than globally is what a real rule does: the
-   * crowded early decades are labelled 1, 2 and 5 only, and the later, more
-   * widely spaced decades carry the full set of digits.
-   */
-  function thin(ticks) {
-    const byDecade = new Map();
-    for (const tick of ticks) {
-      const key = Math.floor(tick.x / 100);
-      if (!byDecade.has(key)) byDecade.set(key, []);
-      byDecade.get(key).push(tick);
-    }
-
-    for (const group of byDecade.values()) {
-      if (group.length < 2) continue;
-      // How much room each label has, judged by its gap to the one before. A
-      // four digit label needs far more than a one digit one.
-      //
-      // The first and last labels in a group are never dropped, however tight
-      // they are. On a log-log row they are the two ends of the decade, which
-      // are the values a reader looks for; and the first has no left-hand
-      // neighbour, so measuring it against the gap that follows would drop the
-      // row's opening value.
-      const keep = new Set([0, group.length - 1]);
-      for (let i = 1; i < group.length - 1; i++) {
-        // A graduation with nothing printed on it has no label to lose, and its
-        // neighbour is now an unlabelled subdivision rather than the previous
-        // number, so measuring against it would thin labels that fit.
-        if (!group[i].label) continue;
-        const gap = group[i].x - group[i - 1].x;
-        const need = 5 + group[i].label.length * 3.2;
-        if (gap >= need) keep.add(i);
-      }
-      group.forEach((tick, i) => {
-        if (!keep.has(i)) tick.label = '';
-      });
-    }
-    return ticks;
-  }
-
-  /**
- * How a log-log value is printed. A row above one shows two decimals, which is
- * what makes 1.01 and 1.05 distinguishable at a glance; a row below one drops
- * the leading zero the way the instrument prints ".95" rather than "0.95".
- */
-  function showLogLog(below, v) {
-    // A row whose excess reaches whole numbers needs no decimals: LL3 runs to 11
-    // and printing "11.00" implies a precision the row does not carry.
-    const whole = Math.abs(v - Math.round(v)) < 1e-9;
-    const s = whole ? String(Math.round(v)) : v.toFixed(2);
-    if (!below) return s;
-    // Drop the leading zero without substituting a dot for it: replacing /^0/
-    // with "." yields "..99", because the decimal separator is already a dot.
-    return s.charAt(0) === '0' ? s.slice(1) : s;
-  }
-
-/** Which of geometry's named scales a row's graduations are read from. */
-  function scaleFor(row) {
-    switch (row.kind) {
-      case 'cube': return 'K';
-      case 'square': return 'A';
-      case 'reciprocal': return 'CI';
-      case 'projected': return row.fn === 'tan' ? 'T' : 'S';
-      case 'log-log': return row.name;
-      default: return 'D';
-    }
   }
 
   /* ------------------------------------------------------------- drawing */
@@ -358,6 +536,9 @@
     // near-white text colour: on the ivory rule they were invisible, so eight
     // of every nine ticks simply did not appear.
     const ink = row.slide ? 'var(--slide-ink)' : 'var(--rule-ink)';
+    // The numbers take the row's colour; the name never does. On the instrument
+    // the red is the printer's second pass over the numbers alone.
+    const numberInk = row.red ? 'var(--red-ink)' : ink;
 
     for (const tick of ticks) {
       const grade = GRADES[tick.grade];
@@ -374,11 +555,15 @@
       group.appendChild(line);
 
       if (tick.label) {
+        // Centred on its own graduation, with the baseline set just inside the
+        // top of the tallest tick. The numbers therefore sit above the ticks
+        // rather than among them, which is what keeps a row's subdivisions from
+        // running through its own digits.
         const text = el('text', {
           x: tick.x.toFixed(1),
-          y: (row.y - h - 2).toFixed(1),
+          y: (row.y - row.height * rule669.TALLEST_GRADUATION + grade.font * 0.35).toFixed(1),
           'text-anchor': 'middle',
-          fill: row.red ? 'var(--red-ink)' : ink,
+          fill: numberInk,
           'font-size': grade.font,
           opacity: tick.grade === 0 ? 0.95 : 0.7,
         });
@@ -387,33 +572,35 @@
       }
     }
 
-    // The scale's name, printed to the left of the graduated area the way the
-    // instrument prints it, and marking the row even when it has no graduations
-    // we can vouch for. Anchored by its right edge so the gap to the first
-    // graduation is the same on every row however long the name is -- which is
-    // what makes the legends read as a column down the left of the rule.
+    // The scale's name, printed in the left-hand column and marking the row even
+    // when it has no graduations we can vouch for. Anchored by its right edge so
+    // the gap to the index is the same on every row however long the name is,
+    // which is what makes the legends read as a column down the rule. Black on
+    // every row, including the red ones, which the photographs are clear about.
     const name = el('text', {
+      id: 'legend',
       x: -LEGEND_GAP,
-      y: (row.y - 3).toFixed(1),
+      y: (row.y - row.height * 0.5 + 4).toFixed(1),
       'text-anchor': 'end',
-      fill: row.red ? 'var(--red-ink)' : ink,
-      'font-size': 10,
-      'font-weight': 600,
-      opacity: 0.9,
+      fill: ink,
+      'font-size': 12,
+      'letter-spacing': 0.5,
+      opacity: 0.92,
     });
     name.textContent = row.label;
     group.appendChild(name);
 
     if (row.unverified) {
-      // The margin is now only wide enough for the legend, so this note has
-      // nowhere to sit beside it. It goes under the row's own graduations
-      // instead, where the instrument's rows carry no further printing anyway.
+      // Left as a bare name with its row empty. An invented graduation would be
+      // read as a reading of the instrument, which is the one thing this drawing
+      // may not do.
       const note = el('text', {
-        x: 0,
-        y: (row.y + 9).toFixed(1),
+        id: 'unverified-note',
+        x: 4,
+        y: (row.y - row.height * 0.35).toFixed(1),
         fill: 'var(--red-ink)',
         'font-size': 7,
-        opacity: 0.75,
+        opacity: 0.7,
       });
       note.textContent = 'not recovered';
       group.appendChild(note);
@@ -426,23 +613,23 @@
   /**
    * The aluminium end cap, with its fixing screws.
    *
-   * Set just beyond the last graduation rather than on top of it. The axis ends
-   * at its final mark, so a cap drawn from there would cover the numbers a
-   * reader needs at the end of the scale.
+   * Set beyond the ivory rather than on top of it, and sized from the
+   * measurements: the cap on the left of the instrument is a little longer than
+   * the one on the right, which is one of those asymmetries that reads as wrong
+   * the moment it is drawn as a pair.
    */
-  function drawCap(parent, side, axisWidth, ruleHeight) {
+  function drawCap(parent, side, extent, ruleHeight) {
     const group = el('g', { id: `cap-${side}` });
-    // Left of the first graduation there is only the overhang; the right end
-    // needs the same clearance, so the rule is drawn wider than the axis it is
-    // graduated on and the caps sit in the space beyond it.
-    const x = side === 'left' ? -OVERHANG - CAP_W : axisWidth + GAP;
+    const width = side === 'left' ? rule669.CAP_L : rule669.CAP_R;
+    const x = side === 'left' ? extent.left : extent.left + extent.width - width;
     group.appendChild(el('rect', {
-      x, y: 0, width: CAP_W, height: ruleHeight,
+      x: x.toFixed(1), y: 0, width, height: ruleHeight,
       fill: 'var(--metal)', stroke: 'var(--metal-edge)', 'stroke-width': 1, rx: 3,
     }));
     for (const t of [0.22, 0.78]) {
       group.appendChild(el('circle', {
-        cx: x + CAP_W / 2,
+        id: 'cap-screw',
+        cx: (x + width / 2).toFixed(1),
         cy: (ruleHeight * t).toFixed(1),
         r: 4.5, fill: 'var(--metal-edge)', opacity: 0.9,
       }));
@@ -453,12 +640,16 @@
 
   /** The glass cursor: body, metal surround, four screws, centre hairline. */
   function drawCursor(parent, band, ruleHeight) {
-    const glassW = 132;
-    // The glass straddles the sliding band rather than sitting inside it. In
-    // the photographs it covers the band and a margin above and below, which is
-    // what makes it read as a piece of glass laid over the rule rather than
-    // part of the printing.
-    const margin = (band.bottom - band.top) * 0.35;
+    /* The glass, measured off the photographs: the cursor's window is 365px wide
+       against a 6034px decade, which is 6% of the graduated length -- 94 rule
+       units. Sized wider than that it stops reading as the instrument's cursor
+       and starts reading as a panel laid over the rule. */
+    const glassW = 94;
+    // The glass covers most of the body's height, standing proud of the sliding
+    // bar above and below. On the instrument it is a sheet of glass held in a
+    // metal frame that spans the whole rule, and a cursor confined to the bar
+    // alone reads as part of the slide rather than as the reader's marker.
+    const margin = (band.bottom - band.top) * 0.75;
     const top = Math.max(4, band.top - margin);
     const height = Math.min(ruleHeight - top, band.height + margin * 2);
 
@@ -510,15 +701,15 @@
    * Draw a face of the rule.
    *
    * @param {SVGSVGElement} svg target, emptied first
-   * @param {{axisPx:number,decades:number}} options the rule's geometry
-   * @param {{face?:string, highlight?:string, minimap?:boolean}} opts
+   * @param {{axisPx:number,decades?:number}} options the rule's geometry
+   * @param {{face?:string, minimap?:boolean}} opts
    */
   function draw(svg, options, opts) {
     const o = opts || {};
     const face = o.face || 'front';
     const rows = rule669.layout(face); // throws on an unknown face
     const band = rule669.slideBand(face);
-    const ruleHeight = rule669.height(face);
+    const ruleHeight = rule669.height();
     const g = geometry(options);
 
     svg.innerHTML = '';
@@ -530,6 +721,22 @@
     const slide = el('g', { id: 'slide' });
     svg.appendChild(stock);
     svg.appendChild(slide);
+
+    /* The slide is clipped to the body of the rule. The bar travels -- by up to
+       its own length, which is what dividing by a value below one takes -- and
+       without this its ends would hang off the ivory past the end caps, which is
+       not something the instrument does. Clipping is also what makes the slide
+       read as a bar in a groove: its ends go behind the stock rather than over
+       the table. */
+    const defs = el('defs');
+    const clipId = `stock-clip-${svg.id || 'rule'}`;
+    const clip = el('clipPath', { id: clipId });
+    clip.appendChild(el('rect', {
+      x: extent.left, y: 0, width: total, height: ruleHeight,
+    }));
+    defs.appendChild(clip);
+    svg.appendChild(defs);
+    slide.setAttribute('clip-path', `url(#${clipId})`);
 
     /* The two plates. The stock is one piece above and below the band; the
        slide is a separate bar. The seam between them is the gap, drawn as a
@@ -551,9 +758,9 @@
     });
     slide.appendChild(plate);
 
-    // A shadow along the top edge of the sliding bar, so it reads as sitting above
-    // the stock rather than printed on it. Kept faint: on a pale slide a heavy
-    // band draws more attention than the seam it is meant to support.
+    // A shadow along the top edge of the sliding bar, so it reads as sitting
+    // above the stock rather than printed on it. Kept faint: on a pale slide a
+    // heavy band draws more attention than the seam it is meant to support.
     slide.appendChild(el('rect', {
       x: extent.left, y: band.top, width: total, height: 2,
       fill: 'var(--slide-shadow)', opacity: 0.35,
@@ -561,14 +768,15 @@
 
     /* The line the instrument prints across the bar: after CIF on the front
        face, after B on the back. Only the front divides its slide exactly in
-       two; the back divides one row from three, so the position is per-face
-       data rather than a midpoint. Drawn inside the slide group so it travels
-       with the bar, and lighter than either seam, because it is a division
-       within one piece of material rather than a join between two. */
+       two; the back divides one row from three, so the position is per-face data
+       rather than a midpoint. Drawn inside the slide group so it travels with
+       the bar, and lighter than either seam, because it is a division within one
+       piece of material rather than a join between two. */
+    const midline = rule669.slideMidline(face);
     slide.appendChild(el('line', {
       id: 'slide-midline',
       x1: extent.left, x2: extent.left + total,
-      y1: rule669.slideMidline(face), y2: rule669.slideMidline(face),
+      y1: midline, y2: midline,
       stroke: 'var(--slide-edge)',
       'stroke-width': 1,
       opacity: 0.7,
@@ -580,15 +788,15 @@
     }
 
     /* End caps, drawn over the plates so they sit proud of the scales. */
-    drawCap(svg, 'left', options.axisPx, ruleHeight);
-    drawCap(svg, 'right', options.axisPx, ruleHeight);
+    drawCap(svg, 'left', extent, ruleHeight);
+    drawCap(svg, 'right', extent, ruleHeight);
 
     const cursor = drawCursor(svg, band, ruleHeight);
 
     let minimap = null;
-    if (o.minimap) minimap = drawMinimap(svg, band, ruleHeight);
+    if (o.minimap) minimap = drawMinimap(svg, extent, band, ruleHeight);
 
-    const parts = { geometry: g, stock, slide, cursor, minimap, band, face };
+    const parts = { geometry: g, stock, slide, cursor, minimap, band, face, extent };
     return parts;
   }
 
@@ -597,20 +805,20 @@
    * view is showing. Drawn in rule coordinates on a separate strip, so the
    * renderer needs no idea how wide that strip ends up on screen.
    */
-  function drawMinimap(parent, band, ruleHeight) {
+  function drawMinimap(parent, extent, band, ruleHeight) {
     const group = el('g', { id: 'minimap' });
 
     // A faint bar for the sliding band, so the slide's position has a track to
     // be read against.
     group.appendChild(el('rect', {
       id: 'minimap-track',
-      x: -OVERHANG, y: band.top, width: OVERHANG * 2, height: band.height,
+      x: extent.left, y: band.top, width: extent.width, height: band.height,
       fill: 'var(--slide)', opacity: 0.22,
     }));
 
     const marker = el('rect', {
       id: 'minimap-slide',
-      x: -OVERHANG, y: band.top, width: 8, height: band.height,
+      x: extent.left, y: band.top, width: 8, height: band.height,
       fill: 'var(--slide-edge)', opacity: 0.9,
     });
     group.appendChild(marker);
@@ -630,7 +838,7 @@
    * Move the slide, the cursor, and the minimap's markers.
    *
    * The only function the animation loop calls per frame. It writes transforms
-   * and one width, so nothing here can trigger layout.
+   * and two attributes, so nothing here can trigger layout.
    */
   function move(parts, slideX, cursorX, minimapWindow) {
     parts.slide.setAttribute('transform', `translate(${slideX.toFixed(2)},0)`);
@@ -639,7 +847,7 @@
     if (parts.minimap) {
       // The marker sits at the left edge of the sliding bar, so it starts at the
       // rule's index and travels with the slide exactly as the bar does.
-      parts.minimap.marker.setAttribute('x', (-OVERHANG + slideX).toFixed(2));
+      parts.minimap.marker.setAttribute('x', (parts.extent.left + slideX).toFixed(2));
       if (minimapWindow) {
         parts.minimap.viewport.setAttribute('x', String(minimapWindow.x));
         parts.minimap.viewport.setAttribute('width', String(minimapWindow.w));
@@ -647,5 +855,9 @@
     }
   }
 
-  return { draw, move, graduations, scaleFor, drawnExtent, OVERHANG, CAP_W, GAP };
+  return {
+    draw, move, graduations, drawnExtent,
+    LEGEND_GAP, MIN_TICK,
+    baseStep, snap125, resolveLabel, cyclicLabel, logLabel, belowOne,
+  };
 });

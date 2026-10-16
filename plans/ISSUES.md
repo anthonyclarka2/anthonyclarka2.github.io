@@ -1,4 +1,4 @@
-# Open issues: fidelity to the K&E 669
+# Open issues: fidelity to the K&E 4181-3
 
 Raised from the high-resolution photographs of the instrument. Each entry records
 what the instrument does, what the implementation does, what is known so far, and
@@ -14,51 +14,65 @@ Status values: `OPEN`, `DIAGNOSED` (cause identified, fix not yet written),
 | I-2 D appears missing from the lower front | `FIXED` |
 | I-3 Slide boundaries appear misplaced | `FIXED` |
 | I-4 Slide's dividing line missing | `FIXED` |
-| I-5 Sine needs a scale the chosen face lacks | `OPEN` |
+| I-5 Sine needs a scale the chosen face lacks | `FIXED` — the reading was wrong, not the faces |
 
 ---
 
 ## The authoritative layout
 
-Transcribed from the photographs. This is the specification; the row order in
-`rule669.js` and the band in `slideBand()` must agree with it exactly.
+Transcribed from the photographs at 1:1. This is the specification; the row order
+in `rule669.js` and the band in `slideBand()` must agree with it exactly.
 
-**Front face** — eleven rows, three pieces:
+**THE TWO FACES WERE SWAPPED IN THE FIRST READING OF THESE PHOTOGRAPHS.** What is
+written below is the corrected one. The front carries the C family and the
+log-log pair LL2/LL3; the back carries L, K and A with the trig rows and the
+log-log pair LL01/LL1. The quickest way to tell the reading is right: the front
+has TEN rows and the back ELEVEN, across the same height of ivory, so the back's
+rows are visibly shorter -- measured at 90.3px against the front's 99.2px.
 
-```
-  LL01     stock
-  L        stock
-  K        stock
-  A        stock
-  ---------------- upper boundary of the slide ----------------
-  CF       slide
-  CIF      slide
-  -------- horizontal line: divides the slide exactly in two ----
-  CI       slide
-  C        slide
-  ---------------- lower boundary of the slide ----------------
-  D        stock
-  DI       stock
-  LL1      stock
-```
-
-**Back face** — ten rows, three pieces:
+**Front face** — ten rows, three pieces:
 
 ```
-  LL02     stock
-  LL03     stock
+  LL02     stock     red numbers
+  LL03     stock     red numbers
   DF       stock
   ---------------- upper boundary of the slide ----------------
-  B        slide
-  -------- horizontal line: between B and T ----
-  T        slide
-  SRT      slide
-  S        slide
+  CF       slide
+  CIF      slide     red numbers
+  -------- horizontal line: divides the slide exactly in two ----
+  CI       slide     red numbers
+  C        slide
   ---------------- lower boundary of the slide ----------------
   D        stock
   LL3      stock
   LL2      stock
 ```
+
+
+**Back face** — eleven rows, three pieces:
+
+```
+  LL01     stock     red numbers
+  L        stock
+  K        stock
+  A        stock
+  ---------------- upper boundary of the slide ----------------
+  B        slide
+  -------- horizontal line: between B and T ----
+  T        slide     red numbers
+  SRT      slide
+  S        slide     red numbers
+  ---------------- lower boundary of the slide ----------------
+  D        stock
+  DI       stock     red numbers
+  LL1      stock
+```
+
+The row NAMES in the left-hand column are printed black on every row of both
+faces. Only the numbers take the second, red pass. `front_legends.png` and
+`back_legends.png` are the 1:1 crops this was read from, and they settle it for
+every red row on both faces.
+
 
 Two features of the slide are called out separately because they are not row
 boundaries and are easy to mistake for them:
@@ -144,10 +158,18 @@ that side; typing `sin(30)` from the front turns the rule over; typing
 
 ## I-2 — D appears to be missing from the lower front face
 
-**Status:** `OPEN` — not yet confirmed
+**Status:** `FIXED` — cause found, fix verified in the browser
 
 **Reported.** `D` is missing from the lower part of the front face. The front
 should read `… C, D, DI, LL1`.
+
+**Resolution.** The same cause as I-3: `slideBand` returned the wrong range, so
+`D`'s printing fell under the slide plate and was painted over. Fixed with I-3,
+and confirmed since in the browser — the front face now draws all ten rows with
+`D` on the stock below the bar, carrying its own graduations. The reported row
+list (`… C, D, DI, LL1`) was itself a symptom of the swapped faces: on the
+corrected layout `DI` and `LL1` are back-face rows and the front ends `D, LL3,
+LL2`.
 
 **What the code says.** This one does not reproduce from the layout, so it needs
 checking at 1:1 rather than a guess.
@@ -311,49 +333,42 @@ I-3 outright, and it is what stops the next row-order change from being silent.
 
 ## I-5 — A sine is read with two scales that are never on the same face
 
-**Status:** `OPEN` — found while fixing I-1, not yet fixed
+**Status:** `FIXED` — the reading was wrong, not the faces
 
 **Found.** `resolveFace` is the first piece of face logic that could be asked
 what it was doing, and asking it showed that sine cannot be read on either
 face. `sin` and `cos` read with `S` and `CI`. `S` is printed on the back; `CI`
 is printed on the front. `faceCanShow(['S', 'CI'], face)` is false for both.
 
-The app already told the reader to do this: the working steps for `sin(30)` read
-"Read 0.5 against CI", and the rule had turned itself over to the back to show
-`S`, which has no `CI` on it. `resolveFace` falls back to the first scale that
-exists anywhere, which turns the rule to the back and keeps trigonometry
-working, but it does not answer the question.
+**Resolution — read off the instrument, not decided.** The reading was the
+mistake. A sine on this rule is read against **`D`**, which is printed on BOTH
+faces, so nothing has to be seen through the instrument at once and the question
+dissolves.
 
-**Why this is not a coding error to fix quickly.** How the instrument actually
-reads a sine was not established here. The obvious reading — that `S` is
-graduated so that `sin θ` falls at the same position on the front's `C` scale,
-so the cursor is set on `S` and the value read through it on `C` — cannot be
-right as drawn, because a single face cannot be seen through the cursor at once.
-The alternatives all need the photographs or the instrument to settle, and
-guessing would produce a confident animation of a procedure that is not the one
-the rule performs.
+`S` is graduated so that `D` under a graduation shows **ten times the sine**: sin
+30° sits over `D`'s 5, not its 0.5, because both scales share the rule's single
+decade and a sine never exceeds one. The reader places the decimal point, which is
+what an instrument of this period asks of them. The old plan read `CI` there,
+which at an `S` graduation shows the reciprocal of the `D` reading — the cosecant
+over ten — so `sin(30)` narrated a number that looked like an answer and was not
+one.
 
-**To settle it, one of:**
+Confirmed by the arithmetic of the corrected geometry, and stated in the tests:
+`read('D', posOf('S', 30))` is 5, and `read('D', posOf('T', 45))` is 10. `S` runs
+from about 5.74° at its index to 90° at its far end and `T` from 5.71° to 45°,
+which is where the photographs show their first and last graduations.
 
-1. Read the `S` scale's graduations off the back photograph and check where they
-   fall relative to `C` on the front. If they coincide, sine is read across the
-   faces and the app should say so rather than naming one scale on the other.
-2. Read the `SRT` scale, whose graduations are also unknown. If it carries
-   `sin θ` directly, sine is read entirely on the back and the step text should
-   say `SRT` rather than `CI`.
-
-**Meanwhile.** The face note added for I-1 reports the gap honestly: with
-`sin(30)` on the back it reads "Back face: this operation needs CI, which this
-side does not carry." That is the correct thing to show until the procedure is
-settled, and it is better than the previous behaviour of quietly claiming a
-scale that is not there.
+`scalesUsed` in `app.js` now returns `['S', 'D']` and `['T', 'D']`, so
+`resolveFace` turns the rule to the back — the face that prints `S` — and finds
+everything the operation reads already there. The face note no longer fires for
+trigonometry.
 
 ---
 
 ## Where this stopped
 
-End of the session on the view-proportions work. Tree clean on `dev` at
-`240500c`, 181 tests green:
+End of the session that reworked the layout to the corrected authoritative one
+above. Tree on `dev` at `fbb84db` plus this change, 208 tests green:
 
 ```
 node --test "tests/**/*.test.js"
@@ -364,51 +379,61 @@ Note the tests live in `tests/slide-rule/` and reach back through
 GitHub Pages publishes, and a bare directory is not a directory to a glob.
 The test command is the one in `.github/workflows/pages.yml`.
 
+**What this session changed.**
+
+- The faces were unswapped and every row, colour and legend settled at 1:1
+  against the photographs. `rule669.js` now carries the corrected rows, the
+  measured body metric (26-unit rows, 10.12 row-heights of ivory, 59.4 of axis,
+  a legend column of 4.4 and caps of 3.9 and 3.6) and a uniform pitch per face.
+- `geometry.js` was rewritten around ONE decade: every row spans the rule and is
+  compressed by its own cycle count. The log-log rows are graduated on
+  `log10|ln v|`, the folded scales are a shift rather than a wrap, and every
+  range is exactly one decade.
+- `render.js` was rewritten: graduations are generated per scale kind, the C and
+  D rows print the instrument's own peculiar tenths convention (`1 1 2 3 … 9`),
+  the folded rows carry a printed `π` at each end and CIF a `3.18`, the row names
+  are black on every row, and the log-log rows print the lists read off the rule.
+- `plan.js` reads sine and tangent against `D`, brings large operands down to
+  their mantissas and carries the decades, uses C's right-hand index for products
+  past ten, and reads roots with the cursor on A or K. Multiplication, division,
+  powers and roots now work for operands the old four-decade model refused.
+
 **Next session, in this order.**
 
-1. **Debug the zoom and the animation across steps.** Deferred by agreement
-   until the views were right. The main view is now a fixed
-   `DETAIL_PX_PER_UNIT` of 1.25 and overflows its panel by 517px at the window
-   width it was last checked at, so the camera's framing and the scroll
-   position have to be looked at together rather than separately: the viewBox
-   pans and the container scrolls, and it is not yet clear the two should move
-   in step or whether the scroll should follow the focus automatically.
+1. **Walk the rows against the instrument, one at a time**, with the photographs
+   open. This is the thing the user asked for and the reason for all of the
+   above. The rows most worth checking are listed under "Unverified" in
+   `plans/SCALES.md`; LL03's middle and LL02's `.60`-to-`.40` stretch are the two
+   places where the marks table is a reconstruction rather than a reading, and
+   `SRT` is still not recovered at all.
 
-2. **The dead band along the bottom of the rule.** Left alone deliberately.
-   `rule669.height` is 376 units but the last row's ink stops at 324, so there
-   is roughly 52 units of blank below it against 14 above. At the new larger
-   scale that asymmetry is visible as a deep empty strip. Trimming it changes
-   the aspect from 2.96 to about 3.30 and every camera framing with it, so it
-   wants to be its own change rather than folded into the zoom work.
+2. **Debug the zoom and the animation across steps.** The main view is a fixed
+   `DETAIL_PX_PER_UNIT` of 1.25 and so is 2532px wide against a panel of about
+   880, which is deliberate — it overflows and scrolls. What is not settled is
+   whether the container should scroll to follow the camera's focus
+   automatically or stay where the reader put it.
 
-3. **I-5**, which needs a reading of the photographs rather than a decision.
-
-4. **The remaining unverified scale work**, all recorded in `SCALES.md`:
-   `LL2`/`LL3` ranges (visible as wrong now the back face can be inspected),
-   the `S`/`T` paired labels, and the end-of-row multiplier captions.
+3. **The slide's ends.** The bar now travels up to its own length, which is what
+   dividing by a value below one takes, so it is clipped to the body of the rule
+   rather than allowed to hang past the end caps. Worth a look in the browser at
+   the extremes of travel.
 
 **Worth re-measuring rather than trusting.** Everything about layout was checked
-in a real browser because the DOM stub cannot see any of it. The proportion
-figures — `stretchX = 1.000`, the 517px overflow, 613x207 and 1393x470 — were
-measured at one window width. They are the kind of number that changes with the
-viewport and looks fine until it doesn't.
+in a real browser because the DOM stub cannot see any of it. The figures recorded
+here — the 2532x329 main view, the 983x128 overview, the 94-unit cursor glass —
+were measured at one window width.
 
 ---
 
 ## Suggested order of work
 
-The first four are done. What is left, in order:
-
-1. **I-5** — needs a reading of the photographs or the instrument, not a
-   decision. Until then the face note reports the gap, which is the honest
-   state.
-2. **Re-check `LL2`/`LL3` against the photographs.** The back now renders and
-   can be inspected, which it could not before I-1. Their ranges are still the
-   ones derived from the naming rather than read off the rule: `LL3` shows
-   `2 3 4 … 11` and `LL2` shows `1.10 1.20 … 2`, where the instrument carries
-   far wider ranges. Recorded in `plans/SCALES.md` as unverified.
-3. **`S` and `T` paired labels, and the end-of-row captions.** Both readable in
-   the photographs, both listed in `SCALES.md` as not yet implemented.
+1. **Walk each row against the photographs**, one at a time. Everything
+   unverified is listed in `plans/SCALES.md`.
+2. **Zoom and scroll** across steps.
+3. **`S` and `T` paired labels**, and the end-of-row captions. Both are readable
+   in the photographs and neither is implemented: the complement pairs
+   (`84|6`, `83|7`) sit near the left of both rows, and every row carries its
+   range caption in the end column.
 
 Everything above needs a browser check as well as a green suite. The row order,
 the band, the seams and the midline are all layout, and the DOM stub cannot see

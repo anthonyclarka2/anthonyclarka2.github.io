@@ -5,8 +5,9 @@ const assert = require('node:assert/strict');
 
 const { plan } = require('../../docs/slide-rule/plan.js');
 const { geometry } = require('../../docs/slide-rule/geometry.js');
+const rule669 = require('../../docs/slide-rule/rule669.js');
 
-const RULE = { axisPx: 1000, decades: 4 };
+const RULE = { axisPx: rule669.AXIS_W, decades: 1 };
 const g = geometry(RULE);
 const close = (actual, expected, what) =>
   assert.ok(Math.abs(actual - expected) < 1e-9,
@@ -63,8 +64,8 @@ test('every step carries narration the user could follow on a real rule', () => 
 test('the slide returns home for operations that need no offset', () => {
   // Roots and powers are read directly off a scale with the slide at rest.
   const p = run('sqrt(144)');
-  const finalSlide = p.steps.filter((s) => s.target === 'slide').at(-1);
-  if (finalSlide) close(finalSlide.to, 0, 'slide ends at home');
+  assert.equal(p.steps.filter((s) => s.target === 'slide').length, 0,
+    'a root moves the cursor and nothing else');
 });
 
 test('a step log accompanies the steps for the UI', () => {
@@ -90,34 +91,59 @@ test('a reading is reported as close as the rule could actually resolve', () => 
 
 /* ------------------------------------------------ decade normalisation */
 
-test('an operand past the left edge is normalised rather than refused', () => {
-  // 0.0004 sits four decades left of the rule's index, so the divisor is scaled
-  // onto the rule and the shift removed from the answer afterwards.
+test('an operand outside the rule is carried in, rather than refused', () => {
+  // The stock carries one decade, so 0.0004 is four decades below anything it
+  // can set. It is brought up to its own mantissa -- 4 -- and the decades are
+  // put back on the answer, which is how a person uses a rule this short.
   const p = run('1 / 0.0004');
   close(p.result, 2500, '1 / 0.0004');
-  assert.ok(p.normalised, 'reports that it normalised');
-  assert.equal(p.shift, 4, 'shifted by four decades');
+  close(p.reading, 2500, 'and the rule arrives at it');
+  assert.ok(p.notes.some((n) => /decade/i.test(n)),
+    `explains the carrying, got ${JSON.stringify(p.notes)}`);
 
-  // The quotient can still be read on the overhang, which is where a physical
-  // rule's slide sticks out past the stock. So a negative step position is
-  // legitimate here, unlike a step past the right edge which nothing can reach.
+  // Every step lands on the rule, because the operands were brought onto it.
+  // Slide offsets may be negative -- the bar travels left of home to divide
+  // below one -- but never further than its own length.
   for (const step of p.steps) {
-    assert.ok(step.to <= RULE.axisPx,
-      `no step runs off the right edge, got ${step.to}`);
+    if (step.target === 'slide') {
+      assert.ok(Math.abs(step.to) <= RULE.axisPx + 1e-6,
+        `the slide stays within its travel, got ${step.to}`);
+    } else {
+      assert.ok(step.to >= -1e-6 && step.to <= RULE.axisPx + 1e-6,
+        `the cursor stays on the rule, got ${step.to}`);
+    }
   }
 });
 
-test('normalisation reports the shift so the narration can explain it', () => {
-  const p = run('1 / 0.0004');
-  assert.ok(p.normalised, 'flagged');
-  assert.equal(typeof p.shift, 'number', 'has a decade shift');
-  assert.ok(p.shift !== 0, 'shift is non zero');
-  assert.ok(p.notes.some((n) => /decade|shift/i.test(n)),
-    `explains the shift, got ${JSON.stringify(p.notes)}`);
+test('an operand above ten is brought down to its mantissa', () => {
+  // The whole of what "placing the decimal point" means on this instrument:
+  // 144 is set as 1.44, and the hundreds are carried back out of the answer.
+  const p = run('144 / 12');
+  close(p.result, 12, '144 / 12');
+  close(p.reading, 12, 'the rule reads it');
+  assert.ok(p.notes.some((n) => /1\.44|mantissa|decade/i.test(n)),
+    `explains the carriage, got ${JSON.stringify(p.notes)}`);
+  for (const step of p.steps) {
+    assert.ok(step.to <= RULE.axisPx + 1e-6 && step.to >= -1e-6,
+      `no step runs off the rule, got ${step.to}`);
+  }
+});
+
+test('multiplication past ten uses the right-hand index, as a reader would', () => {
+  // 8 times 9 is 72, which does not fit the stock's decade read against C's
+  // left index. A reader sets the same slide and reads against the right index,
+  // one place smaller. The instrument carries an index at each end for this.
+  const p = run('8 * 9');
+  close(p.result, 72, '8 * 9');
+  close(p.reading, 72, 'and the rule reads it');
+  assert.ok(p.notes.some((n) => /index/i.test(n)),
+    `says which index was read, got ${JSON.stringify(p.notes)}`);
+  const last = p.steps.at(-1);
+  assert.ok(last.to <= RULE.axisPx, 'and the cursor stays on the stock');
 });
 
 test('a result that overflows the right edge is refused, not silently wrong', () => {
-  // 1e4 squared needs eight decades, twice what the rule has.
+  // 1e4 squared needs eight decades, far more than the rule has.
   const p = run('1e4 ^ 2');
   assert.ok(p.limits.length > 0 || p.notes.length > 0, 'reports a limit');
   const said = [...p.limits, ...p.notes].join(' ');
@@ -138,21 +164,42 @@ test('cosine is read as sine of the complement, not from a C scale', () => {
 
 test('a cube is not mistaken for a cube root', () => {
   // pow(343, 1/3) == 7 too, so testing whether the value round trips would
-  // label this a root and put the cursor on 343, reading 49.
+  // label this a root, put the cursor on the wrong scale and read 1.913.
   const p = run('7 ^ 3');
   assert.equal(p.operation, 'power', 'reported as a power');
   close(p.result, 343, '7 ^ 3');
   close(p.reading, 343, 'reading');
-  close(p.steps[0].to, g.posOf('K', 7), 'cursor on the base');
+  // The base goes on D and the answer is read on K, which is the direction the
+  // rule works in: K is D's graduations compressed three times, so D's 7 sits
+  // under K's 343.
+  close(p.steps[0].to, g.posOf('D', 7), 'cursor on the base, on D');
+});
+
+test('a cube root puts the cursor on the radicand on K and reads D', () => {
+  const p = run('cbrt(250)');
+  assert.equal(p.operation, 'root', 'reported as a root');
+  close(p.result, 6.299605249474365, 'cbrt(250)');
+  close(p.reading, 6.299605249474365, 'reading');
+  close(p.steps[0].to, g.posOf('K', 250), 'cursor on the radicand, on K');
+});
+
+test('a square root carries an even number of decades, so the answer is a decade clear', () => {
+  // A carries two decades of value, so half a decade of shift is not a decade
+  // anyone could place. sqrt(1500) is therefore set as 15 on A, whose D reading
+  // is 3.873, and the reader carries two decades: 38.73.
+  const p = run('sqrt(1500)');
+  close(p.result, 38.72983346207417, 'sqrt(1500)');
+  close(p.reading, 38.72983346207417, 'reading');
+  close(p.steps[0].to, g.posOf('A', 15), 'cursor on 15 on A, not 1500');
 });
 
 test('a normalised division reads the true answer, not the shifted one', () => {
-  // The divisor is scaled onto the rule, so the rule reads too large by that
-  // factor until the shift is taken back off.
-  const p = run('1 / 0.0004');
-  close(p.result, 2500, 'true result');
-  close(p.reading, 2500, 'reading matches after the shift is undone');
-  assert.ok(p.error < 1e-6, `error is negligible, got ${p.error}`);
+  // The operands are brought onto the rule, so the rule reads the mantissas'
+  // quotient and the decades are carried out of it.
+  const p = run('12 / 144');
+  close(p.result, 0.08333333333333333, 'true result');
+  close(p.reading, 0.08333333333333333, 'reading with the decades carried back');
+  assert.ok(p.error < 1e-9, `error is negligible, got ${p.error}`);
 });
 
 test('an unrepresentable case still reports the true arithmetic', () => {

@@ -80,22 +80,21 @@
   }
 
   /**
-   * Bring a value onto the rule by shifting whole decades, returning the shift
-   * applied. Shift is only ever a whole number of decades and only ever brings
-   * a value that is too far LEFT onto the rule -- a value too far right is past
-   * what any slide position can reach, because the slide can travel right by at
-   * most the rule's own length.
+   * Bring a value onto the rule's single decade, returning what was left out.
+   *
+   * The stock carries one decade of graduations, so an operand has to be brought
+   * into [1, 10) before it can be set on it. The decades that came off are
+   * carried in the reader's head and put back on the answer, which is the whole
+   * of what "placing the decimal point" means on an instrument like this. Doing
+   * it in one place is why multiplication and division no longer refuse every
+   * operand above ten, which they did while the model gave the stock four
+   * decades to work with.
    */
-  function normaliseOnto(g, value) {
-    let v = value;
-    let shift = 0;
-    for (let guard = 0; guard < 64; guard++) {
-      const x = g.posOf('D', Math.abs(v));
-      if (Number.isFinite(x) && x >= 0) break;
-      v *= 10;
-      shift += 1;
-    }
-    return { value: v, shift };
+  function onDecade(value) {
+    const abs = Math.abs(value);
+    if (!Number.isFinite(abs) || abs <= 0) return { value: abs, shift: 0 };
+    const shift = Math.floor(Math.log10(abs) + 1e-12);
+    return { value: abs / Math.pow(10, shift), shift };
   }
 
   /** True when a position lies within the span of the rule. */
@@ -104,198 +103,217 @@
   }
 
   /**
-   * How many decades an operand sits outside the rule. The rule spans from its
-   * index at the left edge to `decades` further right, so a positive result
-   * means the value is too small to reach.
+   * The rule's span as prose.
+   *
+   * It is ONE decade -- the graduated length of the stock -- and saying "the 1
+   * decades this rule spans" is the kind of sentence that makes a reader
+   * distrust the rest of the page. Kept in one place so the narrations that
+   * mention the span cannot drift apart.
    */
-  function decadesOut(g, value) {
-    const x = g.posOf('D', Math.abs(value));
-    return Math.floor(-x / (g.axisPx / g.decades));
+  function spanText(g) {
+    return g.decades === 1
+      ? 'the single decade this rule spans'
+      : `the ${g.decades} decades this rule spans`;
+  }
+
+  /**
+   * The narration for operands that had to be brought down onto the rule.
+   *
+   * Said once, plainly, because it is the step a learner misses: the rule does
+   * not carry 144, it carries 1.44, and the hundreds are arithmetic the reader
+   * does in their head.
+   */
+  function decadeNote(moved) {
+    const shifted = moved.filter((m) => m.from !== m.to);
+    if (shifted.length === 0) return [];
+    const list = shifted.map((m) => `${fmt(m.from)} as ${fmt(m.to)}`).join(' and ');
+    return [
+      `${list}. An operand above ten does not fit the stock's one decade, so it `
+      + 'is brought down to its own mantissa and the decades are put back on the '
+      + 'answer. That is what a person does with the decimal point.',
+    ];
   }
 
   /**
    * Multiply and divide, via C against D. This is the operation a slide rule
    * was built for and the only one that genuinely moves the slide.
+   *
+   * Both operations come down to the same two settings, which is why they are
+   * written together here and why the instrument shows them on adjacent rows:
+   *
+   *   - the LEFT index of C against a value on D multiplies by what C's marks
+   *     read, and the RIGHT index does the same ten times smaller. A reader
+   *     picks whichever keeps the answer on the stock, and carries the ten.
+   *   - for division the cursor goes on the dividend, the divisor is brought
+   *     under it, and the answer is read at C's index -- again whichever index
+   *     is on the stock, and again carrying the ten.
+   *
+   * Everything is stated in mantissas: the operands are brought to [1, 10) and
+   * the decades are arithmetic the reader does with the decimal point.
    */
   function planMultiply(g, a, b) {
-    // Prefer the reading order a person would use: put the smaller, less
-    // awkward operand on D where possible. Either order gives the same product.
+    // The larger operand stays on D, where the answer is read; the smaller rides
+    // the slide. Either order gives the same product.
     let x = a;
     let y = b;
     if (Math.abs(x) < Math.abs(y)) { x = b; y = a; }
 
-    let notes = [];
+    const nx = onDecade(x);
+    const ny = onDecade(y);
+    const sign = (x < 0) !== (y < 0) ? -1 : 1;
+    const posX = g.posOf('D', nx.value);
+    const posY = g.posOf('C', ny.value);
 
-    // Slide multiplication is only possible while the sum of the two operands'
-    // decades fits the rule. The standard fix at the bench is to shift one
-    // operand UP by whole decades and the other DOWN by the same amount, so the
-    // shift cancels in the product instead of inflating it. For 1e3 * 1e-3 that
-    // means working with 1e0 * 1e0, which reads 1 straight off the rule.
-    const normX = normaliseOnto(g, Math.abs(x));
-    const normY = normaliseOnto(g, Math.abs(y));
-    const shift = Math.max(normX.shift, normY.shift);
+    // Past ten the product runs off the end of the stock, and a reader moves to
+    // C's right index instead: the same setting, the answer one place smaller.
+    const straight = posX + posY;
+    const wrapped = posX - g.axisPx + posY;
+    const useWrapped = !onRule(g, straight) && onRule(g, wrapped);
+    const from = useWrapped ? posX - g.axisPx : posX;
+    const cursorTo = useWrapped ? wrapped : straight;
+    const decades = nx.shift + ny.shift + (useWrapped ? 1 : 0);
+    const shown = g.read('D', cursorTo);
+    const reading = sign * shown * Math.pow(10, decades);
 
-    if (shift === 0) {
-      return supported({
-        operation: 'multiply',
-        steps: multiplySteps(g, x, y, x, y, x * y),
-        log: multiplyLog(x, y, x, y, x * y, 0),
-        result: x * y,
-        reading: x * y,
-      });
-    }
-
-    const xAdj = normX.shift === shift
-      ? (x < 0 ? -1 : 1) * normX.value          // already on the rule
-      : x / Math.pow(10, shift);                 // pushed down to cancel
-    const yAdj = normY.shift === shift
-      ? (y < 0 ? -1 : 1) * normY.value
-      : y / Math.pow(10, shift);
-
-    const posX = g.posOf('D', Math.abs(xAdj));
-    const posY = g.posOf('C', Math.abs(yAdj));
-
-    notes.push(
-      `One operand is ${shift} decade${shift === 1 ? '' : 's'} beyond what a four ` +
-      `decade rule can hold. The two operands are shifted by ${shift} decade` +
-      `${shift === 1 ? '' : 's'} in opposite directions -- ${fmt(x)} becomes ` +
-      `${fmt(xAdj)} and ${fmt(y)} becomes ${fmt(yAdj)} -- so the shift cancels ` +
-      'in the product. This is what a person does at the bench.',
-    );
-
-    if (!Number.isFinite(posX) || !Number.isFinite(posY) ||
-        !onRule(g, posX) || !onRule(g, posY)) {
-      return unsupported([
-        ...notes,
-        `Even shifted, these values do not both fit within the ${g.decades} ` +
-        'decades this rule spans.',
-      ], { operation: 'multiply', result: x * y });
-    }
-
-    const product = g.read('D', posX + posY);
-    return supported({
-      operation: 'multiply',
-      steps: multiplySteps(g, x, y, xAdj, yAdj, product, shift),
-      log: multiplyLog(x, y, xAdj, yAdj, product, shift),
-      notes,
-      normalised: true,
-      shift,
-      result: x * y,
-      reading: product,
-    });
-  }
-
-  /** The three moves that make up a slide multiplication. */
-  function multiplySteps(g, x, y, xAdj, yAdj, product, shift) {
-    const posX = g.posOf('D', Math.abs(xAdj));
-    const posY = g.posOf('C', Math.abs(yAdj));
-    const undo = shift ? ` Undoing the ${shift} decade shift gives the real answer.` : '';
-    return [
+    const index = useWrapped ? 'right-hand index (the 10) of C' : 'index of C';
+    const steps = [
       {
         target: 'slide',
-        to: posX,
-        say: `Slide the rule until the 1 on C sits against ${fmt(xAdj)} on D.`,
+        to: from,
+        say: `Slide the rule until the ${index} sits against ${fmt(nx.value)} on D.`,
       },
       {
         target: 'cursor',
         to: posX,
-        say: `The cursor marks ${fmt(xAdj)} on D, the value just set.`,
+        say: `The cursor marks ${fmt(nx.value)} on D, the value just set.`,
       },
       {
         target: 'cursor',
-        to: posX + posY,
-        say: `${fmt(yAdj)} on the slide now crosses D at ${fmt(product)}.${undo}`,
+        to: cursorTo,
+        say: `${fmt(ny.value)} on the slide now crosses D at ${fmt(shown)}`
+          + `${useWrapped ? ', read against the right-hand index' : ''}`
+          + `${decades ? `, and carrying the decades off the operands gives ${fmt(reading)}` : ''}.`,
       },
     ];
-  }
 
-  function multiplyLog(x, y, xAdj, yAdj, product, shift) {
-    const log = [
-      shift
-        ? `Shift the operands to ${fmt(xAdj)} and ${fmt(yAdj)} so both fit the rule.`
-        : null,
-      `Set ${fmt(xAdj)} against the C index.`,
-      `Read the answer where ${fmt(yAdj)} on C crosses D: ${fmt(product)}.`,
-      shift ? `Undo the ${shift} decade shift on the answer.` : null,
-    ];
-    return log.filter(Boolean);
-  }
-
-  /** Division: set the dividend on C over the divisor on D, read C's index. */
-  function planDivide(g, a, b) {
-    const outA = decadesOut(g, a);
-    const outB = decadesOut(g, b);
-    let notes = [];
-
-    // Normalise the DIVISOR only. The dividend rides on the slide, which can
-    // travel past the stock's left edge, so it does not have to sit on the rule
-    // to be settable. The divisor is read off D, so it must be on the rule.
-    const normB = normaliseOnto(g, Math.abs(b)) ;
-    const bAdj = (b < 0 ? -1 : 1) * normB.value;
-    const shift = normB.shift;
-    if (shift !== 0) {
+    const notes = decadeNote([
+      { from: Math.abs(x), to: nx.value },
+      { from: Math.abs(y), to: ny.value },
+    ]);
+    if (useWrapped) {
       notes.push(
-        `The divisor is ${shift} decade${shift === 1 ? '' : 's'} below the rule's ` +
-        `index, so it is scaled onto the rule by ${shift} decade` +
-        `${shift === 1 ? '' : 's'} and the shift put back on the answer. ` +
-        'This is what a person does at the bench with a rule this short.',
+        `${fmt(nx.value)} times ${fmt(ny.value)} passes ten, so the answer is read `
+        + 'against the right-hand index of C rather than the left. That is the '
+        + 'same setting read one place smaller, and it is why the rule has an '
+        + 'index at each end.',
       );
     }
 
-    const posA = g.posOf('C', Math.abs(a));
-    const posB = g.posOf('D', Math.abs(bAdj));
-    if (!Number.isFinite(posA) || !Number.isFinite(posB)) {
-      return unsupported([
-        'Those values cannot be placed on this rule, even after shifting decades.',
-      ], { result: a / b, operation: 'divide' });
-    }
-    if (!onRule(g, posB)) {
-      return unsupported([
-        `The divisor is still past the right edge of the rule, and the slide ` +
-        'cannot travel far enough to bring it into view.',
-      ], { result: a / b, operation: 'divide' });
-    }
+    return supported({
+      operation: 'multiply',
+      steps,
+      log: [
+        decimalsNote(nx, ny),
+        `Set ${fmt(nx.value)} against the ${index}.`,
+        `Read the answer where ${fmt(ny.value)} on C crosses D: ${fmt(shown)}.`,
+        decades ? `Put the decades back: ${fmt(reading)}.` : null,
+      ].filter(Boolean),
+      notes,
+      result: x * y,
+      reading,
+      // A real rule multiplies any pair of mantissas, so there is nothing here
+      // that the instrument cannot do. The limit list stays empty on purpose.
+      limits: [],
+    });
+  }
 
+  /** The one-line log entry for operands that came down a decade or more. */
+  function decimalsNote(nx, ny) {
+    const moved = [nx, ny].filter((n) => n.shift !== 0);
+    if (moved.length === 0) return null;
+    const total = moved.reduce((sum, n) => sum + n.shift, 0);
+    return `Bring the operands onto the rule, carrying ${total} decade`
+      + `${total === 1 ? '' : 's'}.`;
+  }
+
+  /** Division: the dividend over the divisor, read at C's index. */
+  function planDivide(g, a, b) {
+    const na = onDecade(a);
+    const nb = onDecade(b);
+    const sign = (a < 0) !== (b < 0) ? -1 : 1;
+    const posA = g.posOf('D', na.value);
+    const posB = g.posOf('C', nb.value);
+
+    // The slide brings the divisor under the dividend. The offset is the same
+    // whichever index is read afterwards, so only WHICH index changes.
     const slideTo = posA - posB;
-    const steps = [];
-    steps.push({
-      target: 'slide',
-      to: slideTo,
-      say: `Slide until ${fmt(a)} on C sits against ${fmt(bAdj)} on D.`,
-    });
-    steps.push({
-      target: 'cursor',
-      to: g.posOf('C', 1) + slideTo,
-      say: `The 1 on C is the quotient, read where the cursor crosses D.`,
-    });
-
-    const quotient = g.read('D', g.posOf('C', 1) + slideTo);
+    const atLeft = slideTo;
+    const atRight = slideTo + g.axisPx;
+    // The quotient is read at whichever of C's two indexes is on the stock. A
+    // quotient below one puts the left index off the left edge, and then it is
+    // the right index that is read and the ten that is carried.
+    const useRight = !onRule(g, atLeft) && onRule(g, atRight);
+    const cursorTo = useRight ? atRight : atLeft;
+    const decades = na.shift - nb.shift + (useRight ? -1 : 0);
+    const shown = g.read('D', cursorTo);
+    const reading = sign * shown * Math.pow(10, decades);
     const trueResult = a / b;
-    // The divisor was scaled UP by `shift` decades, so the rule computes
-    // a / (b * 10^shift): too SMALL by that factor. Multiplying the reading back
-    // restores the real quotient.
-    const reading = quotient * Math.pow(10, shift);
+
+    const steps = [
+      {
+        target: 'cursor',
+        to: posA,
+        say: `Put the cursor on ${fmt(na.value)} on D, the dividend brought onto the rule.`,
+      },
+      {
+        target: 'slide',
+        to: slideTo,
+        say: `Slide the rule until ${fmt(nb.value)} on C sits under the cursor, `
+          + `against the ${fmt(na.value)} on D.`,
+      },
+      {
+        target: 'cursor',
+        to: cursorTo,
+        say: `Read the ${useRight ? 'right-hand index (the 10)' : 'index'} of C `
+          + `against D: ${fmt(shown)}`
+          + `${decades ? `, and carrying the decades gives ${fmt(reading)}` : ''}.`,
+      },
+    ];
+
+    const notes = decadeNote([
+      { from: Math.abs(a), to: na.value },
+      { from: Math.abs(b), to: nb.value },
+    ]);
+    if (useRight) {
+      notes.push(
+        `${fmt(na.value)} over ${fmt(nb.value)} is less than one, so the answer is `
+        + 'read at the right-hand index of C and comes out ten times smaller than '
+        + 'the graduation it is read against. That is the same setting read the '
+        + 'other way, and it is why the rule has an index at each end.',
+      );
+    }
+    const limits = !onRule(g, cursorTo)
+      ? ['the slide cannot travel far enough to bring both operands into view']
+      : [];
 
     return supported({
       operation: 'divide',
       steps,
       log: [
-        `Set ${fmt(a)} on C over ${fmt(bAdj)} on D.`,
-        `Read the 1 on C against D: ${fmt(quotient)}.`,
-        shift !== 0 ? `Restore the ${shift} decade shift: ${fmt(trueResult)}.` : null,
+        decimalsNote(na, nb),
+        `Set the cursor on ${fmt(na.value)} on D, and bring ${fmt(nb.value)} on C under it.`,
+        `Read the ${useRight ? 'right-hand' : 'left-hand'} index of C against D: ${fmt(shown)}.`,
+        decades ? `Put the decades back: ${fmt(trueResult)}.` : null,
       ].filter(Boolean),
       notes,
-      normalised: shift !== 0,
-      shift,
+      limits,
       result: trueResult,
       reading,
-      limits: onRule(g, g.posOf('C', Math.abs(a)) - g.posOf('D', Math.abs(bAdj))) ? []
-        : ['the slide cannot travel far enough to bring both operands into view'],
     });
   }
 
   /**
-   * Powers and roots, read straight off A, C| and K with the slide at rest.
+   * Powers and roots, read straight off A, B and K with the slide at rest.
    * These are direct scale readings, so no slide movement is required.
    */
   function planPower(g, base, exponent) {
@@ -338,68 +356,98 @@
       });
     }
 
-    // For a power the cursor goes on the BASE, because the base's graduation is
-    // what the A and K scales are graduated to meet. For a root the relationship
-    // runs the other way: the cursor goes on the RESULT, whose graduation on
-    // A or K is the root itself. Getting this backwards is not a rounding
-    // error -- putting the cursor on 144 instead of 12 reads 20736.
-    // A root is recognised by its exponent, not by whether the value happens to
-    // round trip. 7 ^ 3 also satisfies pow(result, 1/3) == base, so testing the
-    // arithmetic labels a cube as a cube root and puts the cursor on the answer
-    // instead of the base, which reads 49 rather than 343.
+    /* Which scale carries which direction of the relationship, and how the
+       operand is brought onto the rule.
+
+       A and K are D's own graduations compressed two and three times, so the
+       rule reads v^2 and v^3 by setting the cursor on v on D and looking at A or
+       K, and it reads roots the other way round: the cursor goes on the value on
+       A or K and D underneath shows the root. That is the direction the
+       instrument works in, and getting it backwards is not a rounding error --
+       putting the cursor on 144 instead of 12 reads 20736.
+
+       The operand is then brought inside one cycle of the scale it is set on, and
+       the decades that came off it are carried into the answer, which is exactly
+       what a reader does with the decimal point. A square root shifts by an EVEN
+       number of decades, because A carries two decades of value and half a decade
+       is not a decade anyone can place; a cube root shifts by a multiple of
+       three. */
     const isRoot = Math.abs(exponent - 0.5) < 1e-12 ||
       Math.abs(exponent - 1 / 3) < 1e-12;
-    const looksRoot = isRoot;
-    const onScale = looksRoot ? value : base;
-    const scale = exponent === 2 || exponent === 0.5 ? 'A' : 'K';
-    const scaleNote = scale === 'A'
-      ? 'The A scale carries squares: its 7 graduation sits where D reads 49, ' +
-        'and its 7 also sits where D reads 49 read as the root. A takes the ' +
-        'square root of whatever D shows beneath it.'
-      : 'The K scale carries cubes: its 3 graduation sits where D reads 27, and ' +
-        'K takes the cube root of whatever D shows beneath it.';
+    const answerScale = exponent === 2 || exponent === 0.5 ? 'A' : 'K';
+    const cycles = answerScale === 'A' ? 2 : 3;
+    // The operand is the number that goes ON the rule in both directions: the
+    // base for a power, the radicand for a root. The scale it is set on and the
+    // scale the answer is read from are what swap over.
+    const operand = Math.abs(base);
+    const operandCycle = isRoot ? cycles : 1;
+    const shift = operandCycle * Math.floor(Math.log10(operand) / operandCycle + 1e-12);
+    const mantissa = operand / Math.pow(10, shift);
+    const cursorScale = isRoot ? answerScale : 'D';
+    const readScale = isRoot ? 'D' : answerScale;
+
+    const scaleNote = answerScale === 'A'
+      ? 'The A scale is D\'s graduations compressed twice over: its 2 sits where ' +
+        'D reads the square root of 2, and the square of 7 is read from D\'s 7 ' +
+        'underneath its 49.'
+      : 'The K scale is D\'s graduations compressed three times over: its 2 sits ' +
+        'where D reads the cube root of 2, and the cube of 7 is read from D\'s 7 ' +
+        'underneath its 343.';
 
     if (exponent === 2 || exponent === 0.5 || exponent === 3 || exponent === 1 / 3) {
-      const pos = g.posOf(scale, Math.abs(onScale));
-      // Declared before the steps that narrate it.
-      const reading = looksRoot ? g.read(scale, pos) : g.read('D', pos);
-      steps.push({
-        target: 'cursor',
-        to: pos,
-        say: looksRoot
-          ? `Move the cursor to ${fmt(Math.abs(onScale))} on D, where ${scale} reads its root.`
-          : `Move the cursor to ${fmt(Math.abs(onScale))} on the ${scale} scale.`,
-      });
-      steps.push({
-        target: 'cursor',
-        to: pos,
-        say: looksRoot
-          ? `The ${scale} scale reads ${fmt(reading)} there.`
-          : `Read against D: ${fmt(value)}.`,
-      });
+      const pos = g.posOf(cursorScale, mantissa);
+      // What the rule itself shows at the cursor, before the carried decades are
+      // put back.
+      const shown = g.read(readScale, pos);
+      // The decades carried off the operand, brought back on the answer: doubled
+      // and tripled for a power because the value is squared or cubed, and divided
+      // the same way for a root.
+      const reading = shown * Math.pow(10, isRoot ? shift / cycles : shift * cycles);
+      const carried = Math.abs(shift) > 1e-9;
 
-      // For a power this is what D shows under the base's graduation. For a root it
-      // is the scale's own graduation, which is the answer -- D under the cursor
-      // still shows the radicand, so reading D there reports the input instead.
+      const steps = [
+        {
+          target: 'cursor',
+          to: pos,
+          say: isRoot
+            ? `Move the cursor to ${fmt(mantissa)} on ${answerScale}, where D reads its root.`
+            : `Move the cursor to ${fmt(mantissa)} on D.`,
+        },
+        {
+          target: 'cursor',
+          to: pos,
+          say: isRoot
+            ? `Read ${fmt(shown)} on D there${carried ? `, and carry the ${shift} decades off the operand: ${fmt(value)}` : ''}.`
+            : `Read ${fmt(shown)} on ${answerScale} under the cursor${carried ? `, and carry the ${shift} decades off the operand: ${fmt(value)}` : ''}.`,
+        },
+      ];
+
       const notes = [scaleNote];
-      const x = g.posOf('D', Math.abs(onScale));
       const limits = [];
+      if (carried) {
+        notes.push(
+          `${fmt(operand)} does not fit one cycle of ${cursorScale}, so it is ` +
+          `brought down ${Math.abs(shift)} decade${Math.abs(shift) === 1 ? '' : 's'} ` +
+          `to ${fmt(mantissa)} and the same decades are carried back out of the ` +
+          'answer. That is what a person does with the decimal point.',
+        );
+      }
 
       if (!Number.isFinite(pos) || pos < 0 || pos > g.axisPx) {
         notes.push(
-          `${fmt(onScale)} lies outside the rule's span, so the cursor cannot ` +
+          `${fmt(mantissa)} lies outside the rule's span, so the cursor cannot ` +
           `physically reach it. The answer ${fmt(value)} is still correct.`,
         );
         limits.push('operand outside the rule');
       }
 
       return supported({
-        operation: looksRoot ? 'root' : 'power',
+        operation: isRoot ? 'root' : 'power',
         steps,
         log: [
-          looksRoot
-            ? `Set the cursor on ${fmt(Math.abs(onScale))} of D; ${scale} reads its root there.`
-            : `Set the cursor on ${fmt(Math.abs(onScale))} of ${scale}.`,
+          isRoot
+            ? `Set the cursor on ${fmt(mantissa)} of ${answerScale}; D reads its root there.`
+            : `Set the cursor on ${fmt(mantissa)} of D.`,
           `Read ${fmt(reading)}.`,
         ],
         notes,
@@ -474,7 +522,7 @@
           return !Number.isFinite(x) || x < 0 || x > g.axisPx;
         });
         const limitNotes = offRule
-          ? [`The running value leaves the ${g.decades} decades this rule spans ` +
+          ? [`The running value leaves ${spanText(g)} ` +
              `before the last pass. The result ${fmt(value)} is correct, but the ` +
              'rule cannot hold every intermediate, which is exactly why nobody ' +
              'does large powers this way.']
@@ -506,18 +554,26 @@
         });
       }
       return unsupported(notes.concat([
-        `The answer, ${fmt(value)}, will not fit within the ${g.decades} ` +
-        'decades this rule spans, and there is no scale for this power.',
+        `The answer, ${fmt(value)}, will not fit within ${spanText(g)}, ` +
+        'and there is no scale for this power.',
       ]), { result: value, operation: 'power' });
     }
   }
 
   /**
-   * Sine, cosine and tangent, read off the projected S and T scales against CI.
+   * Sine, cosine and tangent, read off the projected S and T scales against D.
    *
-   * The sine is taken off CI rather than off D because at an S graduation D
-   * shows the cosecant. The K&E 669 carries CI on the slide for exactly this
-   * purpose, as a Deci-Log does, so the reading is the same on both rules.
+   * The trig scales are laid out so that D carries TEN TIMES the trig value:
+   * sin 30 degrees sits over D's 5, not over D's 0.5, because both scales share
+   * the same one-decade length and a sine never exceeds one. The reader places
+   * the decimal point, which is exactly what an instrument of this period asks
+   * of them.
+   *
+   * This replaced a reading against CI. CI at an S graduation shows the
+   * reciprocal of the D reading -- the cosecant over ten -- so the plan used to
+   * report a number that looked like an answer and was not one. D is printed on
+   * both faces, so a sine can be read whichever side is up; that is what settled
+   * the old question of whether the two scales had to come from different faces.
    */
   function planTrig(g, name, degrees) {
     const scale = name === 'tan' ? 'T' : 'S';
@@ -531,6 +587,10 @@
       : (name === 'sin' ? Math.sin : Math.cos)(degrees / DEG);
 
     const pos = g.posOf(scale, onScale);
+    // What the cursor actually shows on D, and what that means. Both are carried:
+    // the narration names the number a reader would see, the result is the
+    // decimal the reader writes down.
+    const onD = g.read('D', pos);
     const steps = [];
     steps.push({
       target: 'cursor',
@@ -542,7 +602,8 @@
     steps.push({
       target: 'cursor',
       to: pos,
-      say: `Read the answer against CI: ${fmt(value)}.`,
+      say: `Read the answer on D: ${fmt(onD)}. The ${name} is ${fmt(value)}, `
+        + `one place left of what D shows.`,
     });
 
     const notes = [
@@ -551,25 +612,33 @@
           'as the sine of its complement, which is why the cursor is set to ' +
           `${fmt(onScale)} degrees rather than ${fmt(Math.abs(degrees))}.`
         : name === 'sin'
-          ? 'Sine is read against CI, not D. Under an S graduation D shows the ' +
-            'cosecant, which is why the reciprocal scale is needed.'
-          : 'Tangent is read against CI for the same reason as sine.',
+          ? 'Sine is read against D, which carries ten times the trig value. The ' +
+            'cursor sits where D shows ' + fmt(onD) + '; the sine is a tenth of that.'
+          : 'Tangent is read against D, as ten times the tangent, for the same ' +
+            'reason as sine: a tangent below 45 degrees is less than one.',
     ];
 
     let limits = [];
     if (pos < 0) {
+      // Below the smallest angle the row carries. It is not "left of the index on
+      // the overhang": nothing is printed there, and the row simply begins at its
+      // first graduation.
       notes.push(
-        `${fmt(degrees)} degrees sits left of the index, on the part of the slide ` +
-        'that overhangs the stock. The cursor reaches it, but the reading runs off the scale.',
+        `${fmt(onScale)} degrees is smaller than the ${scale} row begins at, so ` +
+        'there is no graduation to set the cursor on. A rule answers this with ' +
+        'its ST row, which carries angles below the ones S and T can resolve.',
       );
-      limits.push('angle on the overhang');
+      limits.push('angle below the row');
     }
-    if (pos > g.axisPx) {
+    if (pos > g.axisPx + 1e-9) {
       notes.push(
-        `${fmt(degrees)} degrees is too small to show on this scale. ` +
-        'A real rule would use the ST scale for it.',
+        name === 'tan'
+          ? `${fmt(onScale)} degrees is past 45, where the tangent exceeds one and ` +
+            'its graduation would run off the end of the stock. That is what the ' +
+            'ST row is for.'
+          : `${fmt(onScale)} degrees is past the end of the S row.`,
       );
-      limits.push('angle too small to resolve');
+      limits.push('angle past the end of the row');
     }
 
     return supported({
@@ -578,11 +647,14 @@
       log: [name === 'cos'
         ? `Read cos(${fmt(Math.abs(degrees))}) as sin of ${fmt(onScale)} degrees.`
         : `Set the cursor on ${fmt(onScale)} degrees of ${scale}.`,
-      `Read ${fmt(value)} against CI.`],
+      `Read ${fmt(value)} on D, one place left of its ${fmt(onD)}.`],
       notes,
       limits,
       result: value,
-      reading: g.read('CI', pos),
+      // The number the rule actually shows, divided by the ten the layout asks
+      // the reader to carry in their head. Kept as the divided value so that the
+      // error the page reports is the error of the answer, not of the carriage.
+      reading: onD / 10,
     });
   }
 
@@ -606,34 +678,47 @@
           return planPower(g, inner, node.source === 'sqrt' ? 0.5 : 1 / 3);
         }
         if (node.source === 'ln' || node.source === 'log10' || node.source === 'log') {
-          // Reading a logarithm needs the Ln or C scales read against D, and the
-          // plan verified that; the narration explains the two step read.
-          const pos = g.posOf('D', value);
-          const scale = node.source === 'ln' ? 'Ln' : 'C';
+          // The rule carries L, the common logarithm, printed on the back and
+          // read against D. A natural logarithm has no scale of its own on this
+          // instrument: it is a common logarithm multiplied by ln(10), which is
+          // one more setting, and the narration says so rather than pretending
+          // the instrument can do it in a single read.
+          const argument = evaluate(node.argument);
+          const pos = g.posOf('D', argument);
+          const common = Math.log10(argument);
           const steps = [
             {
               target: 'cursor',
               to: pos,
-              say: `Put the cursor on ${fmt(evaluate(node.argument))} on D.`,
+              say: `Put the cursor on ${fmt(argument)} on D.`,
             },
             {
               target: 'cursor',
               to: pos,
               say: node.source === 'ln'
-                ? `Read the Ln scale against it: ${fmt(value)}.`
-                : `Read the mantissa on ${scale} and count the decades on D to get ${fmt(value)}.`,
+                ? `Read L against it: ${fmt(common)}. The natural log is that `
+                  + `times 2.3026, one more setting on C and D: ${fmt(value)}.`
+                : `Read L against it: ${fmt(value)}.`,
             },
           ];
+          const notes = node.source === 'ln'
+            ? ['The rule has no natural-log scale. ln of a number is its common '
+               + 'logarithm multiplied by ln(10), so it takes two settings: read '
+               + 'L for the common logarithm, then multiply by 2.3026.']
+            : [];
           return supported({
             operation: node.source,
             steps,
             log: [steps[0].say, steps[1].say],
-            notes: node.source === 'ln'
-              ? ['The Ln scale on a four decade rule tops out at 9.21, so ln of ' +
-                 'anything above e^9.21 has no graduation to read.']
-              : [],
+            notes,
             result: value,
-            reading: g.read('D', pos),
+            // For a common logarithm the rule reads the answer exactly. For a
+            // natural one it reads the common logarithm and the multiplication
+            // is a second setting, so the plan's own value is what the two
+            // settings arrive at; reporting the first read here would show a
+            // percentage error that measures the conversion factor, not a
+            // mistake.
+            reading: node.source === 'ln' ? value : g.read('L', pos),
           });
         }
         if (node.source === 'sin' || node.source === 'cos' || node.source === 'tan') {
@@ -708,7 +793,10 @@
       throw err;
     }
 
-    const g = geometry(rule || { axisPx: 1180, decades: 4 });
+    // The default geometry is the instrument's own: one decade, and the axis the
+    // graduated length is measured at in rule units. A caller that passes its own
+    // `rule` -- the page does -- overrides both.
+    const g = geometry(rule || { axisPx: 1544, decades: 1 });
     const out = planNode(g, ast);
 
     // Fill in what every plan reports, using the true arithmetic result so the
