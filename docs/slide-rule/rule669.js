@@ -93,39 +93,36 @@
   const TALLEST_GRADUATION = GRADES[0].len;
 
   /**
-   * What each log-log row prints, as [from, to, step] runs of round values read
-   * off the photographs.
+   * The numbers each log-log row prints, left to right.
    *
-   * Every other row's labels come from a rule -- hundredths, fiftieths,
-   * twentieths, whole degrees -- and the renderer generates them. A log-log row
-   * prints a LIST: LL3 runs 3 4 5 6 7 8 9 10 20 30 50 100 200 500 1000 2000
-   * 5000 10000 20000, in steps that change four times, and no formula
-   * reproduces that. Reading the list off the instrument is the honest way to
-   * carry it, and it is the part of the rule most likely to need a second
-   * reading, so it is written where it can be corrected in one place.
+   * An entry is either a bare number -- a value the row prints -- or `{ run:
+   * [from, to, step] }`, which stands for every value from one to the other at
+   * that step. Written as objects rather than as bare arrays because a list of
+   * three numbers and a run of three numbers are otherwise the same shape, and
+   * LL03 prints three numbers in a row that are not a run: `.005 .002 .001`.
    *
-   * These were read at 1:1 from the two photographs. LL03's `.35 .30 .25 .20
-   * .15` and `.005 .002 .001 .0005 .0002 .0001`, LL2's `1.11 1.15 ... 2 2.5 e`,
-   * LL3's `3` through `20000`, LL01's `.99` to `.90` and LL1's `1.01` to `1.1`
-   * are transcribed. LL03 between `.15` and `.005` is a plausible break-down
-   * rather than a reading, and is the first thing to check when that row is
-   * walked.
-   *
-   * LL02 has been walked mark by mark and now carries `regions` instead. See
-   * LL_REGIONS below: that is what the rest of these rows will look like once
-   * they have had the same treatment.
+   * These were read at 1:1 from the two photographs. LL2's `1.11 1.15 ... 2 2.5
+   * e`, LL3's `3` through `20000`, LL01's `.99` to `.90` and LL1's `1.01` to
+   * `1.1` are transcribed. LL03's numbers were dictated from the instrument and
+   * are exact.
    */
   const LL_MARKS = {
-    LL01: [[0.98, 0.91, 0.01]],
-    LL03: [[0.35, 0.15, 0.05], [0.14, 0.06, 0.02], [0.055, 0.025, 0.005],
-      [0.014, 0.006, 0.002], [0.005, 0.001, 0.001], [0.0005, 0.0001, 0.0001]],
-    LL1: [[1.02, 1.10, 0.01]],
-    LL2: [[1.11, 1.30, 0.01], [1.32, 2.00, 0.02], [2.05, 2.60, 0.05]],
+    LL01: [{ run: [0.98, 0.91, 0.01] }],
+    // .90 down to .80 every two hundredths, then .80 down to .40 every five
+    // hundredths. The row's own ends are named separately, in LL_ENDS.
+    LL02: [{ run: [0.90, 0.80, 0.02] }, { run: [0.80, 0.40, 0.05] }],
+    // .35 down to .10 every five hundredths, .05 down to .01 every hundredth,
+    // and then the three the row prints below a hundredth and the three below a
+    // thousandth -- which are NOT evenly spaced, which is why they are named.
+    LL03: [{ run: [0.35, 0.10, 0.05] }, { run: [0.05, 0.01, 0.01] },
+      0.005, 0.002, 0.001, 0.0005, 0.0002, 0.0001],
+    LL1: [{ run: [1.02, 1.10, 0.01] }],
+    LL2: [{ run: [1.11, 1.30, 0.01] }, { run: [1.32, 2.00, 0.02] }, { run: [2.05, 2.60, 0.05] }],
     // Not a run above a hundred: the instrument thins its labels to the same
     // 1-2-5 series the graduations themselves are spaced on, so 100 200 500
-    // 1000 2000 5000 10000 20000 is what is printed. Written out as values
-    // because no single step generates that list.
-    LL3: [[3, 10, 1], [20, 50, 10], [100, 200, 500, 1000, 2000, 5000, 10000, 20000]],
+    // 1000 2000 5000 10000 20000 is what is printed.
+    LL3: [{ run: [3, 10, 1] }, { run: [20, 50, 10] },
+      100, 200, 500, 1000, 2000, 5000, 10000, 20000],
   };
 
   /**
@@ -134,25 +131,60 @@
    *
    * Each stretch is a run of values with the step they are marked at, and the
    * steps at which a mark is printed longer: `medium` for the tick a reader
-   * counts in fives at, `long` for the one they count tens at -- which on these
-   * rows is as long as the labelled tick. `label` is the step at which a value is
-   * printed at all.
+   * counts in fives at, `long` for the one they count tens at. Grade and label
+   * are INDEPENDENT -- the numbers a row prints are listed in LL_MARKS above,
+   * and a stretch says nothing about which of its marks carry one -- because on
+   * LL03 the printed `.005`, `.002` and `.001` sit on medium ticks while the
+   * printed `.0005`, `.0002` and `.0001` sit on long ones. A model that graded a
+   * mark by whether it was printed would get one of those two groups wrong.
    *
    * LL02, dictated from the instrument and checked against the photograph at
    * 1:1. The row opens on a long unlabelled tick at e^-0.1; four short ticks
    * take it to `.90`, whose graduation runs between its last two characters;
    * from .90 to .80 the subdivision is thousandths with the fives medium and the
-   * tens long, every twentieth labelled; and from .80 down to the row's foot the
-   * subdivision is two-thousandths with every fifth mark medium and every
-   * twenty-fifth labelled. The `.88 .86 .84 .82` the photographs show fall out
-   * of that, and so do the twenty ticks the instrument prints between two of
-   * them.
+   * tens long; and from .80 down to the row's foot the subdivision is
+   * two-thousandths with every fifth mark medium and the twenty-fifths long.
    */
   const LL_REGIONS = {
     LL02: [
       { from: 0.904, to: 0.901, step: 0.001 },
-      { from: 0.90, to: 0.80, step: 0.001, medium: 0.005, long: 0.01, label: 0.02 },
-      { from: 0.80, to: 0.37, step: 0.002, medium: 0.01, label: 0.05 },
+      { from: 0.90, to: 0.80, step: 0.001, medium: 0.005, long: 0.01 },
+      { from: 0.80, to: 0.37, step: 0.002, medium: 0.01, long: 0.05 },
+    ],
+    /**
+     * LL03, dictated from the instrument. The row opens on a MEDIUM tick
+     * carrying the printed `1/e`, then three short, one medium, four short, and
+     * the printed `.35` on a long tick:
+     *
+     *   .35 -.30   two-thousandths, hundredths medium, the numbers long
+     *   .10 -.02   thousandths, fives medium, tens long
+     *   .02 -.01   half-thousandths, thousandths medium, five-thousandths long
+     *   .01 -.005  two ten-thousandths, thousandths medium
+     *   .005 -.002 the same, so .002 sits on a medium tick
+     *   .002 -.001  ten-thousandths, half-thousandths medium
+     *   .001 -.0005 ten-thousandths, .0005 long
+     *   .0005 -.0002 twenty-millionths, ten-thousandths medium, .0002 long
+     *   .0002 -.0001 hundred-thousandths, .00005 medium, .0001 long
+     *   .0001 -foot hundred-thousandths, .00005 medium, the foot long
+     *
+     * The stretches that begin one mark in rather than on a printed number --
+     * the opening, and the run up to the row's foot -- start where the
+     * instrument's first tick after that number is, which is what keeps the
+     * medium ticks on the values the instrument puts them on.
+     */
+    LL03: [
+      { from: 0.366, to: 0.352, step: 0.002, medium: 0.01 },
+      { from: 0.35, to: 0.10, step: 0.002, medium: 0.01, long: 0.05 },
+      { from: 0.10, to: 0.02, step: 0.001, medium: 0.005, long: 0.01 },
+      { from: 0.02, to: 0.01, step: 0.0005, medium: 0.001, long: 0.005 },
+      { from: 0.01, to: 0.005, step: 0.0002, medium: 0.001 },
+      { from: 0.005, to: 0.002, step: 0.0002, medium: 0.001 },
+      { from: 0.002, to: 0.001, step: 0.0001, medium: 0.0005 },
+      { from: 0.001, to: 0.0005, step: 0.0001, long: 0.0005 },
+      { from: 0.00048, to: 0.00022, step: 0.00002, medium: 0.0001 },
+      { from: 0.00022, to: 0.00020, step: 0.00002, long: 0.0002 },
+      { from: 0.0002, to: 0.0001, step: 0.00001, medium: 0.00005, long: 0.0001 },
+      { from: 0.00009, to: 0.00005, step: 0.00001, medium: 0.00005 },
     ],
   };
 
@@ -173,7 +205,9 @@
   const LL_ENDS = {
     LL01: [[Math.exp(-0.01), '.99'], [Math.exp(-0.1), '.90']],
     LL02: [[Math.exp(-1), '1/e']],
-    LL03: [[Math.exp(-1), '1/e'], [Math.exp(-10), '.00005']],
+    // The row opens on a MEDIUM tick carrying the printed name, not a long one:
+    // read off the instrument while walking the row.
+    LL03: [[Math.exp(-1), '1/e', 1], [Math.exp(-10), '.00005']],
     LL1: [[Math.exp(0.01), '1.01']],
     LL2: [[Math.E, 'e']],
     LL3: [[Math.E, 'e']],
@@ -192,8 +226,8 @@
    * the photographs are clear about.
    */
   const FRONT = [
-    { name: 'LL02', label: 'LL02', scale: 'LL02', red: true, regions: LL_REGIONS.LL02, ends: LL_ENDS.LL02 },
-    { name: 'LL03', label: 'LL03', scale: 'LL03', red: true, marks: LL_MARKS.LL03, ends: LL_ENDS.LL03 },
+    { name: 'LL02', label: 'LL02', scale: 'LL02', red: true, regions: LL_REGIONS.LL02, marks: LL_MARKS.LL02, ends: LL_ENDS.LL02 },
+    { name: 'LL03', label: 'LL03', scale: 'LL03', red: true, regions: LL_REGIONS.LL03, marks: LL_MARKS.LL03, ends: LL_ENDS.LL03 },
     { name: 'DF', label: 'DF', scale: 'DF' },
     { name: 'CF', label: 'CF', scale: 'CF' },
     { name: 'CIF', label: 'CIF', scale: 'CIF', red: true },

@@ -893,6 +893,116 @@ test('LL02 is graduated exactly as the instrument was read', () => {
     'the numbers LL02 prints, left to right');
 });
 
+test('LL03 is graduated exactly as the instrument was read', () => {
+  // Dictated from the instrument mark by mark. Notable because it is the row
+  // where grade and label come apart: `.005`, `.002` and `.001` are printed on
+  // MEDIUM ticks while `.0005`, `.0002` and `.0001` are printed on long ones, so
+  // a model that graded a mark by whether it carried a number would get half of
+  // them wrong.
+  const ll03 = rule669.layout('front').find((r) => r.name === 'LL03');
+  const ticks = render.graduations(g, ll03).slice().sort((a, b) => a.x - b.x);
+  const at = (label) => ticks.find((t) => t.label === label);
+  const between = (a, b) => ticks.filter((t) => t.x > at(a).x && t.x < at(b).x);
+  const grades = (list) => {
+    const out = { 0: 0, 1: 0, 2: 0 };
+    for (const t of list) out[t.grade]++;
+    return out;
+  };
+
+  // The row opens on a MEDIUM tick carrying the printed name -- not a long one,
+  // which is what LL02 opens with.
+  const head = ticks.slice(0, 10);
+  assert.equal(head[0].grade, 1, 'the opening tick is medium');
+  assert.equal(head[0].label, '1/e', 'and carries the printed 1/e');
+  assert.deepEqual(head.slice(1).map((t) => t.grade), [2, 2, 2, 1, 2, 2, 2, 2, 0],
+    'three short, one medium, four short, then .35 long');
+  assert.equal(head[9].label, '.35', 'and .35 is the first number below the name');
+
+  // .35 to .30: twenty-five ticks, the fives medium, the twenty-fifth large.
+  for (const [hi, lo] of [['.35', '.30'], ['.30', '.25'], ['.25', '.20'], ['.20', '.15'], ['.15', '.10']]) {
+    const span = between(hi, lo);
+    assert.equal(span.length, 24, `${hi} to ${lo} has 24 marks between`);
+    assert.deepEqual([4, 9, 14, 19].map((i) => span[i].grade), [1, 1, 1, 1],
+      `${hi} to ${lo}: the 5th, 10th, 15th and 20th are medium`);
+    assert.deepEqual(grades(span), { 0: 0, 1: 4, 2: 20 },
+      `${hi} to ${lo}: and nothing else is marked longer`);
+    assert.equal(at(lo).grade, 0, `${lo} itself is a long tick`);
+  }
+
+  // .10 to .05: fifty ticks, every tenth large, the fives medium.
+  const tenths = between('.10', '.05');
+  assert.equal(tenths.length, 49, '.05 is the fiftieth tick');
+  assert.deepEqual(grades(tenths), { 0: 4, 1: 5, 2: 40 },
+    'four large, five medium, the rest short');
+  assert.deepEqual([4, 14, 24, 34, 44].map((i) => tenths[i].grade), [1, 1, 1, 1, 1],
+    'every fifth mark is medium');
+  assert.deepEqual([9, 19, 29, 39].map((i) => tenths[i].grade), [0, 0, 0, 0],
+    'every tenth mark is large');
+  assert.equal(at('.05').grade, 0, 'and .05 is large');
+
+  // .05 to .04: ten ticks with the fifth medium; the same to .03 and .02.
+  for (const [hi, lo] of [['.05', '.04'], ['.04', '.03'], ['.03', '.02']]) {
+    const span = between(hi, lo);
+    assert.equal(span.length, 9, `${hi} to ${lo} has 9 marks between, so ten ticks`);
+    assert.deepEqual(grades(span), { 0: 0, 1: 1, 2: 8 }, `${hi} to ${lo}: only the fifth is medium`);
+    assert.equal(span[4].grade, 1, `${hi} to ${lo}: and it is the fifth`);
+    assert.equal(at(lo).grade, 0, `${lo} is a long tick`);
+  }
+
+  // .02 to .01: twenty ticks, alternating, with the tenth and twentieth large.
+  const halves = between('.02', '.01');
+  assert.equal(halves.length, 19, 'twenty ticks to .01');
+  assert.equal(halves[9].grade, 0, 'the tenth is large');
+  assert.equal(at('.01').grade, 0, 'and .01, the twentieth, is large');
+  assert.equal(halves[0].grade, 2, 'the alternation starts short');
+  assert.deepEqual(halves.map((t) => t.grade).filter((gr) => gr === 1).length, 8,
+    'eight medium marks run between the two large ones');
+
+  // .01 to .005: twenty-five ticks, every fifth medium -- so .005 is medium.
+  const thousands = between('.01', '.005');
+  assert.equal(thousands.length, 24, '.005 is the twenty-fifth tick');
+  assert.equal(at('.005').grade, 1, '.005 sits on a medium tick');
+  assert.equal(grades(thousands)[1], 4, 'and four more are medium');
+  // .005 to .002: the same, with .002 also medium.
+  const thousands2 = between('.005', '.002');
+  assert.equal(thousands2.length, 14, 'fifteen ticks to .002');
+  assert.equal(at('.002').grade, 1, '.002 sits on a medium tick');
+  // .002 to .001: ten ticks, the fifth medium, .001 medium.
+  const lastThousands = between('.002', '.001');
+  assert.equal(lastThousands.length, 9, 'ten ticks to .001');
+  assert.equal(lastThousands[4].grade, 1, 'the fifth is medium');
+  assert.equal(at('.001').grade, 1, '.001 sits on a medium tick');
+
+  // And below a thousandth the printed numbers go on LONG ticks.
+  const four = between('.001', '.0005');
+  assert.equal(four.length, 4, 'just four marks between');
+  assert.deepEqual(grades(four), { 0: 0, 1: 0, 2: 4 }, 'all four short');
+  assert.equal(at('.0005').grade, 0, '.0005 sits on a long tick');
+
+  const next = between('.0005', '.0002');
+  assert.equal(next.length, 14, 'fifteen ticks to .0002');
+  assert.equal(next[4].grade, 1, 'the fifth is medium');
+  assert.equal(next[9].grade, 1, 'and the tenth');
+  assert.equal(at('.0002').grade, 0, '.0002 sits on a long tick');
+
+  const next2 = between('.0002', '.0001');
+  assert.equal(next2.length, 9, 'ten ticks to .0001');
+  assert.equal(next2[4].grade, 1, 'the fifth is medium');
+  assert.equal(at('.0001').grade, 0, '.0001 sits on a long tick');
+
+  // The foot: four short, one medium, and the named long tick that ends the row.
+  const tail = ticks.filter((t) => t.x > at('.0001').x);
+  assert.deepEqual(tail.map((t) => t.grade), [2, 2, 2, 2, 1, 0],
+    'four short, one medium, then the long tick at the row foot');
+  assert.equal(tail[5].label, '.00005', 'which carries the last printed number');
+  assert.ok(Math.abs(tail[5].x - g.axisPx) < 1e-6, 'and is the row foot itself');
+
+  assert.deepEqual(ticks.filter((t) => t.label).map((t) => t.label),
+    ['1/e', '.35', '.30', '.25', '.20', '.15', '.10', '.05', '.04', '.03', '.02',
+      '.01', '.005', '.002', '.001', '.0005', '.0002', '.0001', '.00005'],
+    'the numbers LL03 prints, left to right');
+});
+
 /* ---------------------------------------------------------- the cursor */
 
 test('the cursor glass is drawn with a surround, screws and a centre line', () => {

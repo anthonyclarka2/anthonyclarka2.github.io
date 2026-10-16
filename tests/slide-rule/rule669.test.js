@@ -552,9 +552,15 @@ test('the log-log rows carry the marks they print, by one of two descriptions', 
         assert.ok(Number.isFinite(region.from) && Number.isFinite(region.to)
           && region.step > 0, `${row.name} region ${region.from}..${region.to}`);
       }
-      for (const [from, to, step] of row.marks || []) {
+      for (const entry of row.marks || []) {
+        // Either a bare printed value or a run of them.
+        if (typeof entry === 'number') {
+          assert.ok(Number.isFinite(entry), `${row.name} prints ${entry}`);
+          continue;
+        }
+        const [from, to, step] = entry.run;
         assert.ok(Number.isFinite(from) && Number.isFinite(to) && step > 0,
-          `${row.name} mark run ${from}..${to} step ${step}`);
+          `${row.name} mark run ${entry.run}`);
       }
     }
   }
@@ -581,7 +587,12 @@ test('every log-log mark lies within its own row', () => {
         within(region.from, 'region start');
         within(region.to, 'region end');
       }
-      for (const [from, to] of row.marks || []) {
+      for (const entry of row.marks || []) {
+        if (typeof entry === 'number') {
+          within(entry, 'printed value');
+          continue;
+        }
+        const [from, to] = entry.run;
         within(from, 'mark');
         within(to, 'mark');
       }

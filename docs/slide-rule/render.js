@@ -404,100 +404,110 @@
   }
 
   /**
+   * The values a log-log row prints, keyed by value.
+   *
+   * Kept apart from the row's regions on purpose: a stretch says how finely it is
+   * marked and which marks are longer, and says nothing about which of them carry
+   * a number. On LL03 the printed `.005`, `.002` and `.001` sit on MEDIUM ticks
+   * while the printed `.0005`, `.0002` and `.0001` sit on long ones, so grading a
+   * mark by whether it is printed would get one of those two groups wrong.
+   */
+  function printedValues(row) {
+    const out = new Map();
+    for (const entry of row.marks || []) {
+      // A bare number is a value the row prints; `{ run: [from, to, step] }`
+      // stands for every value from one to the other at that step.
+      if (typeof entry === 'number') {
+        out.set(entry.toFixed(9), entry);
+        continue;
+      }
+      const [from, to, step] = entry.run;
+      const dir = to >= from ? 1 : -1;
+      const n = Math.round(Math.abs(to - from) / step);
+      for (let i = 0; i <= n; i++) {
+        const v = from + dir * i * step;
+        out.set(v.toFixed(9), v);
+      }
+    }
+    return out;
+  }
+
+  /**
    * A log-log row's graduations, described the way the instrument is graduated.
    *
    * Walked stretch by stretch at the step the stretch is marked at, with the
-   * marks that the stretch names as longer printed longer. Written this way
-   * because it is how a row is read off the instrument: not "here are the
-   * numbers" but "thousandths here, with the fives medium, up to .90".
+   * marks the stretch names as longer printed longer. Written this way because it
+   * is how a row reads when it is transcribed: not "here are the numbers" but
+   * "thousandths here, with the fives medium, up to .90".
    *
    * The row's own two ends are added separately, at the exact natural logarithms
    * the range carries rather than at a round value near them, which is where the
    * instrument prints them: LL02 opens on a bare long tick at e^-0.1 and its
-   * first printed number is `.90`, one step in.
+   * first printed number is `.90`, one step in. Their grade comes from the row's
+   * `ends`, because it is not the same on every row: LL03's opening tick is
+   * medium while LL02's is long.
    */
   function regionGraduations(g, def, row, push) {
     const marks = new Map();
+    // Two stretches meet at a shared value, so keyed by value: a mark is printed
+    // once, and the first stretch to name it decides its grade.
     const add = (v, grade) => {
-      // Two stretches meet at a shared value, and the row's ends land on values
-      // of their own: keyed by value so a mark is printed once.
-      marks.set(v.toFixed(9), { v, grade });
+      const key = v.toFixed(9);
+      if (!marks.has(key)) marks.set(key, { v, grade });
+      return key;
     };
 
     for (const region of row.regions) {
       const dir = region.to >= region.from ? 1 : -1;
       const n = Math.round(Math.abs(region.to - region.from) / region.step);
-      // The decimal places the stretch's own labelling needs, which is what the
-      // instrument prints: a row labelled every twentieth reads `.90`, one
-      // labelled every whole number reads `20`.
-      const digits = region.label
-        ? Math.max(0, Math.ceil(-Math.log10(region.label) - 1e-9))
-        : 2;
       for (let i = 0; i <= n; i++) {
         const v = region.from + dir * (i * region.step);
-        const labelled = region.label && isMultiple(v, region.label);
-        const grade = labelled ? 0
-          : (region.long && isMultiple(v, region.long)) ? 0
-            : (region.medium && isMultiple(v, region.medium)) ? 1
-              : 2;
-        marks.set(v.toFixed(9), {
-          v,
-          grade,
-          label: labelled ? belowOne(v, digits) : '',
-        });
+        const grade = (region.long && isMultiple(v, region.long)) ? 0
+          : (region.medium && isMultiple(v, region.medium)) ? 1
+            : 2;
+        add(v, grade);
       }
     }
 
-    for (const end of def.range) add(end, 0);
+    // The row's own ends, at the exact values its range carries.
+    for (const value of def.range) add(value, 0);
 
+    const printed = printedValues(row);
     const named = new Map();
-    for (const [v, text] of row.ends || []) named.set(v.toFixed(9), text);
+    for (const [v, text, grade] of row.ends || []) {
+      named.set(v.toFixed(9), text);
+      // An end that carries a name also carries a grade, since the two are
+      // independent here too.
+      const key = v.toFixed(9);
+      if (grade !== undefined && marks.has(key)) marks.get(key).grade = grade;
+    }
 
     for (const mark of marks.values()) {
-      const text = named.get(mark.v.toFixed(9));
-      push(g.posOf(def.name, mark.v), text === undefined ? (mark.label || '') : text, mark.grade);
+      const key = mark.v.toFixed(9);
+      const text = named.has(key) ? named.get(key)
+        : (printed.has(key) ? belowOne(mark.v, 2) : '');
+      push(g.posOf(def.name, mark.v), text, mark.grade);
     }
   }
 
   function logLogGraduations(g, def, row, push) {
     if (row.regions) return regionGraduations(g, def, row, push);
 
-    const values = [];
-    for (const entry of row.marks || []) {
-      // An entry is either a run -- exactly three numbers, from, to and step --
-      // or a list of values, which is what a row needs where the instrument
-      // thins its labels to the 1-2-5 series and no single step generates them.
-      // The length is what tells the two apart, so a run can never be mistaken
-      // for a three-value list.
-      if (entry.length === 3) {
-        const [from, to, step] = entry;
-        const dir = to >= from ? 1 : -1;
-        const n = Math.round(Math.abs(to - from) / step);
-        for (let i = 0; i <= n; i++) values.push(from + dir * i * step);
-      } else {
-        values.push(...entry);
-      }
-    }
-    const ends = row.ends || [];
-    for (const [v] of ends) values.push(v);
-    values.sort((a, b) => a - b);
-
-    // The labels first, in the order they fall along the row. The walk above is
-    // in value order, which is the same order for a log-log row running up the
-    // scale and the reverse for one running down; sorting by position makes the
-    // fill below indifferent to which.
+    // A row that has not been walked yet: it carries the numbers it prints and
+    // nothing else, so the marks between them are filled with a plain comb.
     const labels = [];
-    for (const v of values) {
-      const named = ends.find(([ev]) => Math.abs(ev - v) <= Math.abs(v) * 1e-9 + 1e-12);
+    const place = (v, text) => {
       const x = g.posOf(def.name, v);
-      if (!Number.isFinite(x) || x < -1e-6 || x > g.axisPx + 1e-6) continue;
+      if (!Number.isFinite(x) || x < -1e-6 || x > g.axisPx + 1e-6) return;
       // Two marks a fraction of a unit apart are one mark. The ends are exact
       // logarithms and the runs around them are round numbers, so a row's
-      // opening `1.01` and its end mark at e^0.01 land on the same graduation;
-      // printing both would print the label twice, once on top of itself.
-      if (labels.length && Math.abs(x - labels[labels.length - 1].x) < 1) continue;
-      labels.push({ x, label: named ? named[1] : belowOne(v) });
-    }
+      // opening `1.01` and its end mark at e^0.01 land on the same graduation.
+      if (labels.length && Math.abs(x - labels[labels.length - 1].x) < 1) return;
+      labels.push({ x, label: text });
+    };
+
+    for (const v of printedValues(row).values()) place(v, belowOne(v, 2));
+    for (const [v, text] of row.ends || []) place(v, text);
     labels.sort((a, b) => a.x - b.x);
 
     for (let i = 0; i < labels.length; i++) {
