@@ -220,27 +220,42 @@
     if (!row.scale || row.unverified) return [];
     const def = g.describe(row.scale);
     const out = [];
-    // `grade` is 0 for a labelled graduation, 1 for one between the labels and
-    // 2 for a fine subdivision. Only the labelled ones print a number.
-    const push = (x, label, grade) => {
+    // `grade` is 0 for a graduation whose tick is printed long, 1 for one between
+    // the labels and 2 for a fine subdivision; `small` is set for a number the
+    // instrument prints in smaller type, which the folded pair does between its
+    // major 1 and 2. Grade and number are independent: a row can print a number
+    // on a medium tick.
+    const push = (x, label, grade, small) => {
       if (!Number.isFinite(x)) return;
       // Graduations are clipped to the graduated area. The margin left of the
       // index belongs to the legends and to the overhang, where a tangent above
       // 45 degrees would land if the slide could reach that far; nothing is
       // printed out there and a tick that strayed would sit among the names.
       if (x < -1e-6 || x > g.axisPx + 1e-6) return;
-      out.push({ x: Math.min(Math.max(x, 0), g.axisPx), label: label || '', grade });
+      out.push({
+        x: Math.min(Math.max(x, 0), g.axisPx),
+        label: label || '',
+        grade,
+        small: !!small,
+      });
     };
 
-    switch (def.kind) {
-      case 'log': logGraduations(g, def, push); break;
-      case 'linear': linearGraduations(g, def, push); break;
-      case 'reciprocal':
-      case 'folded':
-      case 'folded-reciprocal': cyclicGraduations(g, def, push); break;
-      case 'log-log': logLogGraduations(g, def, row, push); break;
-      case 'projected': projectedGraduations(g, def, push); break;
-      default: break;
+    // A row that has been walked off the instrument describes its own
+    // graduations, stretch by stretch, whatever kind of scale it carries: the
+    // folded pair needs that as much as the log-log rows did.
+    if (row.regions) {
+      regionGraduations(g, def, row, push);
+    } else {
+      switch (def.kind) {
+        case 'log': logGraduations(g, def, push); break;
+        case 'linear': linearGraduations(g, def, push); break;
+        case 'reciprocal':
+        case 'folded':
+        case 'folded-reciprocal': cyclicGraduations(g, def, push); break;
+        case 'log-log': logLogGraduations(g, def, row, push); break;
+        case 'projected': projectedGraduations(g, def, push); break;
+        default: break;
+      }
     }
     // Thinned once, over the finished list, so the rule about which labels may
     // survive is applied to the row as printed rather than to one scale's own
@@ -433,27 +448,28 @@
   }
 
   /**
-   * A log-log row's graduations, described the way the instrument is graduated.
+   * A row whose graduations are described stretch by stretch, the way it reads
+   * when it is transcribed off the instrument.
    *
-   * Walked stretch by stretch at the step the stretch is marked at, with the
-   * marks the stretch names as longer printed longer. Written this way because it
-   * is how a row reads when it is transcribed: not "here are the numbers" but
-   * "thousandths here, with the fives medium, up to .90".
+   * Each stretch says how finely it is marked and which of its marks are printed
+   * longer; `longAt` names individual values that are longer without being on any
+   * step, which is how CF's 25 is described. A stretch that says `small` prints
+   * its numbers in smaller type, which is what the folded pair does between its
+   * major 1 and 2.
    *
-   * The row's own two ends are added separately, at the exact natural logarithms
-   * the range carries rather than at a round value near them, which is where the
-   * instrument prints them: LL02 opens on a bare long tick at e^-0.1 and its
-   * first printed number is `.90`, one step in. Their grade comes from the row's
-   * `ends`, because it is not the same on every row: LL03's opening tick is
-   * medium while LL02's is long.
+   * The row's own two ends are added separately, at the exact values its range
+   * carries rather than at a round value near them, which is where the instrument
+   * prints them: LL02 opens on a bare long tick at e^-0.1 with its first number
+   * one step in, and the folded pair closes on ten pi. Their grade comes from the
+   * row's `ends`, because it is not the same on every row.
    */
   function regionGraduations(g, def, row, push) {
     const marks = new Map();
     // Two stretches meet at a shared value, so keyed by value: a mark is printed
     // once, and the first stretch to name it decides its grade.
-    const add = (v, grade) => {
+    const add = (v, grade, small) => {
       const key = v.toFixed(9);
-      if (!marks.has(key)) marks.set(key, { v, grade });
+      if (!marks.has(key)) marks.set(key, { v, grade, small: !!small });
       return key;
     };
 
@@ -462,10 +478,17 @@
       const n = Math.round(Math.abs(region.to - region.from) / region.step);
       for (let i = 0; i <= n; i++) {
         const v = region.from + dir * (i * region.step);
-        const grade = (region.long && isMultiple(v, region.long)) ? 0
-          : (region.medium && isMultiple(v, region.medium)) ? 1
-            : 2;
-        add(v, grade);
+        const named = region.longAt
+          && region.longAt.some((x) => Math.abs(x - v) < Math.abs(region.step) * 1e-6);
+        const grade = named ? 0
+          : (region.long && isMultiple(v, region.long)) ? 0
+            : (region.medium && isMultiple(v, region.medium)) ? 1
+              : 2;
+        // `small` applies to the stretch's INTERIOR. Its two ends are the majors
+        // either side of it -- for the folded pair that is 1 and 2, which are
+        // printed full size while the 1 to 9 between them are not.
+        const interior = Math.abs(v - region.from) > 1e-9 && Math.abs(v - region.to) > 1e-9;
+        add(v, grade, region.small && interior);
       }
     }
 
@@ -473,20 +496,24 @@
     for (const value of def.range) add(value, 0);
 
     const printed = printedValues(row);
+    // A folded row's numbers are its mantissa -- 1 for ten, 4 for forty -- which
+    // is what the scale is read as, not the value the graduation carries.
+    const cyclic = CYCLIC[def.kind];
     const named = new Map();
     for (const [v, text, grade] of row.ends || []) {
-      named.set(v.toFixed(9), text);
+      const key = v.toFixed(9);
+      named.set(key, text);
       // An end that carries a name also carries a grade, since the two are
       // independent here too.
-      const key = v.toFixed(9);
       if (grade !== undefined && marks.has(key)) marks.get(key).grade = grade;
     }
 
     for (const mark of marks.values()) {
       const key = mark.v.toFixed(9);
-      const text = named.has(key) ? named.get(key)
-        : (printed.has(key) ? belowOne(mark.v, 2) : '');
-      push(g.posOf(def.name, mark.v), text, mark.grade);
+      let text = '';
+      if (named.has(key)) text = named.get(key);
+      else if (printed.has(key)) text = cyclic ? cyclicLabel(def, mark.v) : belowOne(mark.v, 2);
+      push(g.posOf(def.name, mark.v), text, mark.grade, mark.small);
     }
   }
 
@@ -615,6 +642,15 @@
     // the red is the printer's second pass over the numbers alone.
     const numberInk = row.red ? 'var(--red-ink)' : ink;
 
+    // A mirrored row's ticks grow DOWN from the top of the row and its numbers
+    // sit below them. CF is the only one: it hangs its ticks from the top of the
+    // slide, which is the seam, while DF above it hangs its own up from the seam
+    // -- the two point away from each other, which is what makes them read as
+    // one folded scale rather than as two rows that happen to be adjacent.
+    const mirrored = !!row.mirror;
+    const tickBase = mirrored ? row.y - row.height : row.y;
+    const tickDir = mirrored ? 1 : -1;
+
     for (const tick of ticks) {
       const grade = GRADES[tick.grade];
       const h = row.height * grade.len;
@@ -622,7 +658,7 @@
         id: 'tick',
         'data-grade': tick.grade,
         x1: tick.x.toFixed(1), x2: tick.x.toFixed(1),
-        y1: row.y.toFixed(1), y2: (row.y - h).toFixed(1),
+        y1: tickBase.toFixed(1), y2: (tickBase + tickDir * h).toFixed(1),
         stroke: ink,
         'stroke-width': grade.width,
         opacity: grade.opacity,
@@ -630,22 +666,26 @@
       group.appendChild(line);
 
       if (tick.label) {
-        // Centred on its own graduation, with the baseline set just inside the
-        // top of the tallest tick. The numbers therefore sit above the ticks
-        // rather than among them, which is what keeps a row's subdivisions from
-        // running through its own digits.
-        //
-        // The number is anchored so that its LAST CHARACTER begins at the
-        // graduation, which runs up between that character and the ones before
-        // it. That is how the instrument prints these rows, read at 1:1: `.50`
-        // comes out `.5` left of the tick and `0` right of it, `45` comes out
-        // `4` and `5` either side, and a single digit sits wholly to the right.
+        // The number's baseline sits just past the top of its own tick's longest
+        // form, so the digits straddle the tip: a quarter of the way in from the
+        // top when the row is ordinary and the same distance below the tip when
+        // it is mirrored. Written as "the tip plus a fraction of the font" so
+        // that both directions come out of one expression.
+        const tip = tickBase + tickDir * row.height * rule669.TALLEST_GRADUATION;
+        // Two placements, both read off the instrument. C, D and the log-log
+        // rows anchor a number by its END, so the tick runs between its last two
+        // characters: `.50` comes out `.5` left of the tick and `0` right of it,
+        // and a single digit sits wholly to the right. The folded pair centres
+        // its numbers over the tick instead, which is why CF and DF say so.
+        const centred = row.numbers === 'centred';
+        const fontSize = grade.font * (tick.small ? 0.75 : 1);
         const text = el('text', {
-          x: (tick.x + grade.font * 0.62).toFixed(1),
-          y: (row.y - row.height * rule669.TALLEST_GRADUATION + grade.font * 0.35).toFixed(1),
-          'text-anchor': 'end',
+          x: (centred ? tick.x : tick.x + fontSize * 0.62).toFixed(1),
+          y: (tip + fontSize * 0.35).toFixed(1),
+          'text-anchor': centred ? 'middle' : 'end',
           fill: numberInk,
-          'font-size': grade.font,
+          'font-size': fontSize.toFixed(1),
+          'data-small': tick.small ? '1' : '0',
           opacity: tick.grade === 0 ? 0.95 : 0.7,
         });
         text.textContent = tick.label;

@@ -111,10 +111,10 @@ test('the slide band spans the printing of its first and last rows', () => {
     const first = onSlide[0];
     const last = onSlide[onSlide.length - 1];
 
-    assert.ok(Math.abs(band.top - (first.y - first.height * T)) < 1e-9,
+    assert.ok(Math.abs(band.top - first.ink.top) < 1e-9,
       `${face}: band starts at the first slide row's printing, got ${band.top}`);
-    assert.ok(Math.abs(band.bottom - last.y) < 1e-9,
-      `${face}: band ends at the last slide row's baseline, got ${band.bottom}`);
+    assert.ok(Math.abs(band.bottom - last.ink.bottom) < 1e-9,
+      `${face}: band ends at the last slide row's printing, got ${band.bottom}`);
     assert.ok(band.height > 0, `${face}: band has height`);
   }
 });
@@ -128,9 +128,9 @@ test('no stock row is printed inside the slide band', () => {
     const band = rule.slideBand(face);
     for (const row of rule.layout(face)) {
       if (row.slide) continue;
-      const inkTop = row.y - row.height * T;
-      assert.ok(row.y <= band.top || inkTop >= band.bottom,
-        `${face}: stock row ${row.name} prints ${inkTop.toFixed(1)}..${row.y.toFixed(1)}, `
+      const inkTop = row.ink.top;
+      assert.ok(row.ink.bottom <= band.top || inkTop >= band.bottom,
+        `${face}: stock row ${row.name} prints ${inkTop.toFixed(1)}..${row.ink.bottom.toFixed(1)}, `
         + `which is inside the band at ${band.top.toFixed(1)}..${band.bottom.toFixed(1)}`);
     }
   }
@@ -364,7 +364,7 @@ test('the slide band is separated from the stock by a visible seam', () => {
       // graduations to the top of the slide's first, and it has to be wide
       // enough to read as a join.
       const stockInkBottom = lastStock.y;
-      const slideInkTop = first.y - first.height * rule.TALLEST_GRADUATION;
+      const slideInkTop = first.ink.top;
       const gap = slideInkTop - stockInkBottom;
       assert.ok(gap >= rule.SEAM,
         `${face}: only ${gap.toFixed(2)} units between the stock's printing and `
@@ -467,7 +467,7 @@ test('the printed dividing line falls between two slide rows on each face', () =
     const below = rows[above.index + 1];
     assert.ok(y > above.y - above.height && y < below.y,
       `${face}: the line at ${y.toFixed(1)} sits within the bar`);
-    assert.ok(y > above.y && y < below.y - below.height * rule.TALLEST_GRADUATION,
+    assert.ok(y > above.ink.bottom && y < below.ink.top,
       `${face}: and in the gap between the two rows' printing`);
   }
 });

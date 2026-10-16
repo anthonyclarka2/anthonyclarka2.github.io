@@ -215,6 +215,50 @@
   };
 
   /**
+   * CF and DF: the folded pair, read off the instrument and written down once,
+   * because they are mirror images of each other.
+   *
+   * DF is a stock row with its numbers at the top of the row and its ticks
+   * hanging from them down to the seam. CF is the mirror: its ticks begin at the
+   * top of the slide, which is the seam, and run downwards, with the numbers
+   * BELOW them. The two therefore point away from each other, which is what the
+   * eye reads as one scale folded at pi.
+   *
+   * The marks, from pi up to ten pi, dictated off the instrument:
+   *
+   *   pi - 4    two-hundredths, tenths medium, halves long. Its first two marks
+   *             after pi are short, the third -- 3.20 -- medium, and the halves
+   *             long: the tick at 3.5 is long and carries no number.
+   *   4 - 10    twentieths, tenths medium, halves long, so small and medium
+   *             alternate with a long at every half.
+   *   10 - 20   tenths, halves medium, integers long, and the numbers here are
+   *             printed SMALLER than the rest of the row: this is where the
+   *             instrument writes 1 2 3 4 5 6 7 8 9 for eleven through nineteen.
+   *   20 - 30   fifths of ten, the integers medium, and the halves long -- with
+   *             25 large, which is the exception the reader is told about.
+   *   30 - 31.2 fifths of ten again, integers medium, closing on ten pi.
+   */
+  const FOLD_REGIONS = [
+    { from: 3.16, to: 4.00, step: 0.02, medium: 0.1, long: 0.5 },
+    { from: 4.00, to: 10.00, step: 0.05, medium: 0.1, long: 0.5 },
+    { from: 10.00, to: 20.00, step: 0.1, medium: 0.5, long: 1, small: true },
+    { from: 20.00, to: 30.00, step: 0.2, medium: 1, longAt: [25, 30] },
+    { from: 30.00, to: 31.20, step: 0.2, medium: 1 },
+  ];
+
+  /*
+   * What CF and DF print. The numbers are the instrument's own reading of a
+   * folded scale: 4 5 6 7 8 9 across the first half, then 1 for ten, then the
+   * small 1 to 9 for eleven through nineteen, then 2 and 3 for twenty and
+   * thirty. The renderer takes the digits from the scale's mantissa rather than
+   * from the value, which is where that 1-for-ten comes from, and pi at each end
+   * comes from FOLD_ENDS.
+   */
+  const FOLD_MARKS = [{ run: [4, 10, 1] }, { run: [11, 19, 1] }, 20, 30];
+
+  const FOLD_ENDS = [[Math.PI, 'π', 0], [Math.PI * 10, 'π', 0]];
+
+  /**
    * Front face, top to bottom: ten rows.
    *
    * `scale` names the graduation in geometry.js that the row prints. It is on
@@ -225,12 +269,26 @@
    * `red` marks the rows whose numbers the instrument prints in red. The row
    * NAMES in the left-hand column are black on every row of both faces, which
    * the photographs are clear about.
+   *
+   * `mirror` says the row's ticks run DOWN from the top of the row with its
+   * numbers below them, which is CF's case and no other row's so far.
+   *
+   * `numbers` says where a printed number sits relative to its graduation:
+   * `centred` over the tick, as every number on the folded pair is, or anchored
+   * by its end so the tick runs between its last two characters, which is how C,
+   * D and the log-log rows are printed.
    */
   const FRONT = [
     { name: 'LL02', label: 'LL02', scale: 'LL02', red: true, regions: LL_REGIONS.LL02, marks: LL_MARKS.LL02, ends: LL_ENDS.LL02 },
     { name: 'LL03', label: 'LL03', scale: 'LL03', red: true, regions: LL_REGIONS.LL03, marks: LL_MARKS.LL03, ends: LL_ENDS.LL03 },
-    { name: 'DF', label: 'DF', scale: 'DF' },
-    { name: 'CF', label: 'CF', scale: 'CF' },
+    {
+      name: 'DF', label: 'DF', scale: 'DF', numbers: 'centred',
+      regions: FOLD_REGIONS, marks: FOLD_MARKS, ends: FOLD_ENDS,
+    },
+    {
+      name: 'CF', label: 'CF', scale: 'CF', numbers: 'centred', mirror: true,
+      regions: FOLD_REGIONS, marks: FOLD_MARKS, ends: FOLD_ENDS,
+    },
     { name: 'CIF', label: 'CIF', scale: 'CIF', red: true },
     { name: 'CI', label: 'CI', scale: 'CI', red: true },
     { name: 'C', label: 'C', scale: 'C' },
@@ -314,6 +372,17 @@
         slide: onSlide,
         band: onSlide ? 'slide' : 'stock',
       });
+      // Where the row's printing actually falls. A row's `y` is its BASELINE --
+      // the edge its graduations are measured from -- and which edge that is
+      // depends on the row: an ordinary row's ticks grow UP from `y` with its
+      // numbers above them, while a mirrored row's ticks grow DOWN from the top
+      // of the row with its numbers below. CF is the only mirrored row, and it
+      // is mirrored because DF sits directly above it on the other side of the
+      // seam: the two point away from each other, which is what makes them read
+      // as one folded scale.
+      placed.ink = spec.mirror
+        ? { top: placed.y - rowHeight, bottom: placed.y - rowHeight + rowHeight * TALLEST_GRADUATION }
+        : { top: placed.y - rowHeight * TALLEST_GRADUATION, bottom: placed.y };
       top += rowHeight;
       // A seam is a gap between two pieces, not a band added on top of one. It
       // is reserved once at each edge of the slide and nowhere else, because
@@ -330,22 +399,18 @@
    * The y range of the sliding band, so the renderer can draw the seam and the
    * slide as one physical piece rather than inferring it from row flags.
    *
-   * The band spans the PRINTED EXTENT of the sliding rows, not the range from
-   * one baseline to the next. A row's `y` is its baseline and its graduations
-   * are drawn upward from it, so [first.y, last.y + last.height] put the first
-   * sliding row's numbers outside the plate, on the stock above it, and the last
-   * stock row's numbers under the plate where they were invisible. Neither
-   * throws: one reads as the slide boundary being in the wrong place and the
-   * other as a missing scale.
+   * The band spans the PRINTED EXTENT of the sliding rows, which is what `ink`
+   * on each placed row records. Taking it from the baselines instead put the
+   * first sliding row's numbers outside the plate, on the stock above it, and
+   * the first stock row's under the plate, where they were painted over and
+   * simply could not be seen. Neither throws: one reads as the slide boundary
+   * being in the wrong place and the other as a missing scale.
    */
   function slideBand(face) {
-    const rows = layout(face);
-    const slideRows = rows.filter((r) => r.slide);
-    if (slideRows.length === 0) throw new Error(`no slide scales on ${face}`);
-    const first = slideRows[0];
-    const last = slideRows[slideRows.length - 1];
-    const top = first.y - first.height * TALLEST_GRADUATION;
-    const bottom = last.y;
+    const rows = layout(face).filter((r) => r.slide);
+    if (rows.length === 0) throw new Error(`no slide scales on ${face}`);
+    const top = Math.min(...rows.map((r) => r.ink.top));
+    const bottom = Math.max(...rows.map((r) => r.ink.bottom));
     return { top, bottom, height: bottom - top };
   }
 
@@ -380,9 +445,10 @@
     if (!above.slide) throw new Error(`midline row ${above.name} is not on the slide`);
     const below = rows[above.index + 1];
     if (!below || !below.slide) throw new Error(`no slide row below ${above.name}`);
-    // The upper row's printing ends at its baseline; the lower row's begins a
-    // graduation's length above its own.
-    return (above.y + (below.y - below.height * TALLEST_GRADUATION)) / 2;
+    // The gap between the upper row's printing and the lower row's, whatever
+    // edges those two happen to print from: an ordinary row ends at its
+    // baseline, a mirrored one begins at the top of its row.
+    return (above.ink.bottom + below.ink.top) / 2;
   }
 
   /** Height of a face's rule body, needed by the camera and the minimap. */

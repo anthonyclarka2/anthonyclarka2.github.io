@@ -98,7 +98,8 @@ test('a graduation is visible: it has length, weight and contrast', () => {
     render.draw(svg, RULE, { face: 'front' });
     const stock = [0xe6, 0xe0, 0xd0];
     for (const tick of byId(svg, 'tick')) {
-      const len = Number(tick.getAttribute('y1')) - Number(tick.getAttribute('y2'));
+      // Absolute, because a mirrored row hangs its ticks downwards.
+      const len = Math.abs(Number(tick.getAttribute('y1')) - Number(tick.getAttribute('y2')));
       assert.ok(len >= 3, `graduation is ${len} long, too short to see`);
 
       const width = Number(tick.getAttribute('stroke-width'));
@@ -181,7 +182,7 @@ test('the middle graduation of each decade is shorter than the one it sits betwe
     const lens = ['0', '1', '2'].map((grade) => row.children
       .filter((c) => c.getAttribute('id') === 'tick'
         && c.getAttribute('data-grade') === grade)
-      .map((t) => Number(t.getAttribute('y1')) - Number(t.getAttribute('y2'))));
+      .map((t) => Math.abs(Number(t.getAttribute('y1')) - Number(t.getAttribute('y2')))));
 
     for (const [grade, found] of lens.entries()) {
       assert.ok(found.length > 0, `grade ${grade} exists on D`);
@@ -1003,6 +1004,169 @@ test('LL03 is graduated exactly as the instrument was read', () => {
     ['1/e', '.35', '.30', '.25', '.20', '.15', '.10', '.05', '.04', '.03', '.02',
       '.01', '.005', '.002', '.001', '.0005', '.0002', '.0001'],
     'the numbers LL03 prints, left to right');
+});
+
+/* ------------------------------------------------------ the folded pair */
+
+test('CF and DF are graduated exactly as the instrument was read', () => {
+  // Dictated off the instrument, and the pair the walk changed most: they are
+  // mirror images, so one description serves both, and their numbers are the
+  // instrument's mantissa reading -- 1 for ten, with the small 1 to 9 printed
+  // between the major 1 and 2 for eleven through nineteen.
+  const df = rule669.layout('front').find((r) => r.name === 'DF');
+  const ticks = render.graduations(g, df).slice().sort((a, b) => a.x - b.x);
+  const labels = ticks.filter((t) => t.label);
+  // The same digit can be printed twice -- a major number and the small one
+  // inside the next interval -- so a lookup says which it wants.
+  const at = (label, want) => labels.find(
+    (t) => t.label === label && (want === undefined || t.small === want),
+  );
+  const between = (a, b) => ticks.filter(
+    (t) => t.x > at(a, false).x && t.x < at(b, false).x,
+  );
+  const grades = (list) => {
+    const out = { 0: 0, 1: 0, 2: 0 };
+    for (const t of list) out[t.grade]++;
+    return out;
+  };
+
+  // The scale opens on pi in black with a long tick under it, then two short and
+  // one medium -- 3.20 -- and from there four short and a medium repeat until the
+  // long tick at 3.5, which carries no number.
+  assert.equal(ticks[0].label, 'π', 'the row opens on pi');
+  assert.equal(ticks[0].grade, 0, 'on a long tick');
+  assert.ok(Math.abs(ticks[0].x) < 1e-6, 'at the index');
+  assert.deepEqual(ticks.slice(1, 5).map((t) => t.grade), [2, 2, 1, 2],
+    'two short, one medium, then short again');
+  // From pi the marks run in two-hundredths, and the run up to the long 3.5 is
+  // dictated exactly: two short, a medium, then four short and a medium twice
+  // more, then four short and the long tick that carries no number.
+  const threeFiveAt = g.posOf('DF', 3.5);
+  const toThreeFive = ticks.filter((t) => t.x <= threeFiveAt + 0.6);
+  assert.equal(toThreeFive.length, 19, 'the opening pi and eighteen marks to 3.5');
+  assert.equal(toThreeFive[0].label, 'π', 'the first of them is pi');
+  assert.deepEqual(toThreeFive.slice(1).map((t) => t.grade),
+    [2, 2, 1, 2, 2, 2, 2, 1, 2, 2, 2, 2, 1, 2, 2, 2, 2, 0],
+    'two short, a medium, then four short and a medium, twice, then the long 3.5');
+  const threeFive = toThreeFive[toThreeFive.length - 1];
+  assert.equal(threeFive.label, '', 'and 3.5 carries no number');
+  const toFour = between('π', '4');
+  assert.equal(toFour.length, 42, 'the stretch from pi runs to 4 in two-hundredths');
+
+  // 4 to 5 is twenty ticks: short and medium alternating, with the tenth large.
+  for (const [hi, lo] of [['4', '5'], ['5', '6'], ['6', '7'], ['7', '8'], ['8', '9'], ['9', '1']]) {
+    const span = between(hi, lo);
+    assert.equal(span.length, 19, `${hi} to ${lo} is twenty ticks`);
+    assert.deepEqual(grades(span), { 0: 1, 1: 8, 2: 10 },
+      `${hi} to ${lo}: one large, eight medium, the rest short`);
+    assert.equal(span[9].grade, 0, `${hi} to ${lo}: the tenth is the large half`);
+  }
+
+  // 1 to 2 -- that is, ten to twenty -- has ten ticks between each number, the
+  // 5th medium and the 10th large, and its numbers are printed smaller.
+  const tenToTwenty = between('1', '2');
+  assert.equal(tenToTwenty.length, 99, 'ten ticks between each of the ten numbers');
+  assert.deepEqual(grades(tenToTwenty), { 0: 9, 1: 10, 2: 80 },
+    'nine larges, ten mediums, the rest short');
+  assert.deepEqual(tenToTwenty.map((t) => t.grade).filter((gr) => gr === 0).length, 9,
+    'a large at every whole number from 11 to 19');
+
+  // 2 to 3 has fifty ticks, every fifth medium except 25, which is large.
+  const twentyToThirty = between('2', '3');
+  assert.equal(twentyToThirty.length, 49, 'fifty ticks from 20 to 30');
+  assert.deepEqual(grades(twentyToThirty), { 0: 1, 1: 8, 2: 40 },
+    'one large -- the 25 -- eight medium, the rest short');
+  const twentyFive = ticks.find((t) => !t.label && Math.abs(t.x - g.posOf('DF', 25)) < 0.6);
+  assert.equal(twentyFive.grade, 0, 'and the one large tick is at 25');
+
+  // After 30: four short, one medium, one short, then the long tick at ten pi
+  // with the pi symbol on it.
+  const thirties = ticks.filter((t) => t.x > labels.filter((l) => l.label === '3').pop().x);
+  assert.deepEqual(thirties.map((t) => t.grade), [2, 2, 2, 2, 1, 2, 0],
+    'four short, a medium, a short, then the long tick at the row foot');
+  assert.equal(thirties[thirties.length - 1].label, 'π', 'which carries the closing pi');
+  assert.ok(Math.abs(thirties[thirties.length - 1].x - g.axisPx) < 1e-6, 'at the far end');
+
+  // And the numbers, with the small ones marked as the instrument prints them.
+  const shown = labels.map((t) => t.label + (t.small ? '(small)' : ''));
+  assert.deepEqual(shown, ['π', '4', '5', '6', '7', '8', '9', '1',
+    '1(small)', '2(small)', '3(small)', '4(small)', '5(small)', '6(small)',
+    '7(small)', '8(small)', '9(small)', '2', '3', 'π'],
+    'the numbers CF and DF print, with the small ones marked');
+});
+
+test('CF is the mirror of DF: its ticks hang from the top of its row', () => {
+  // The two rows point away from each other across the seam, which is what makes
+  // them read as one folded scale. DF hangs its ticks up from its baseline with
+  // its numbers above them; CF begins its ticks at the top of the slide and runs
+  // them downwards with its numbers below.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    const dfRow = rule669.layout('front').find((r) => r.name === 'DF');
+    const cfRow = rule669.layout('front').find((r) => r.name === 'CF');
+
+    const ticksOf = (name) => byId(svg, `row-${name}`)[0].children
+      .filter((c) => c.attrs.id === 'tick')
+      .map((c) => ({ y1: Number(c.attrs.y1), y2: Number(c.attrs.y2) }));
+
+    for (const t of ticksOf('DF')) {
+      assert.ok(t.y2 < t.y1, 'DF hangs its ticks upward from its baseline');
+      assert.ok(t.y1 <= dfRow.y + 1e-6, 'from the baseline');
+    }
+    for (const t of ticksOf('CF')) {
+      assert.ok(t.y2 > t.y1, 'CF runs its ticks downward from the top of its row');
+      // Tolerated to a tenth, which is the resolution tick coordinates are
+      // written at.
+      assert.ok(Math.abs(t.y1 - (cfRow.y - cfRow.height)) < 0.1,
+        'from the top of the slide, which is the seam');
+    }
+
+    // The consequence for the drawing: the two rows' ticks lie on opposite
+    // sides of the seam they share. DF's occupy the lower half of its row and
+    // CF's the upper half of its own, so the pair point away from each other.
+    const midOf = (name) => {
+      const ys = ticksOf(name).flatMap((t) => [t.y1, t.y2]);
+      return (Math.min(...ys) + Math.max(...ys)) / 2;
+    };
+    assert.ok(midOf('DF') > dfRow.y - dfRow.height / 2,
+      "DF's ticks sit in the lower half of its row");
+    assert.ok(midOf('CF') < cfRow.y - cfRow.height / 2,
+      "CF's ticks sit in the upper half of its row");
+    // Which is to say: both rows' ticks are on the seam's side of their own
+    // middle, DF reaching up to it and CF hanging down from it.
+    const seam = rule669.slideBand('front').top;
+    assert.ok(Math.max(...ticksOf('DF').flatMap((t) => [t.y1, t.y2])) <= seam + 0.1,
+      "DF's ticks do not cross the seam");
+    assert.ok(Math.min(...ticksOf('CF').flatMap((t) => [t.y1, t.y2])) >= seam - 0.1,
+      "and neither do CF's");
+  });
+});
+
+test('the folded pair centres its numbers over their graduations', () => {
+  // Read off the instrument: every number from pi to the major 1 sits over the
+  // middle of its long tick. That is a different placement from C, D and the
+  // log-log rows, which anchor a number by its end so the tick runs between its
+  // last two characters.
+  withStubDom(() => {
+    const svg = stubNode('svg');
+    render.draw(svg, RULE, { face: 'front' });
+    for (const name of ['DF', 'CF']) {
+      const row = byId(svg, `row-${name}`)[0];
+      const ticks = row.children
+        .filter((c) => c.attrs.id === 'tick').map((c) => Number(c.attrs.x1));
+      const numbers = row.children.filter((c) => c.name === 'text'
+        && c.textContent !== name && c.textContent !== 'not recovered');
+      assert.ok(numbers.length > 10, `${name} prints its numbers`);
+      for (const text of numbers) {
+        assert.equal(text.getAttribute('text-anchor'), 'middle',
+          `${name}: "${text.textContent}" is centred`);
+        const x = Number(text.attrs.x);
+        assert.ok(ticks.some((t) => Math.abs(t - x) < 0.05),
+          `${name}: "${text.textContent}" sits on a graduation`);
+      }
+    }
+  });
 });
 
 /* ---------------------------------------------------------- the cursor */
